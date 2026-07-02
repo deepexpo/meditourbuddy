@@ -1,0 +1,19 @@
+{
+  "name": "@meditourbuddy/clinic-registry-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing the clinic registry tools (search_clinics, get_clinic_profile, verify_accreditation, compare_procedures, list_procedures). Build order step 3.",
+  "scripts": {
+    "build": "echo \"not yet implemented\" && exit 0",
+    "typecheck": "echo \"not yet implemented\" && exit 0",
+    "test": "echo \"not yet implemented\" && exit 0"
+  },
+  "dependencies": {
+    "@meditourbuddy/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

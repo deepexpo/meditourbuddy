@@ -1,0 +1,19 @@
+{
+  "name": "@meditourbuddy/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Orchestrator CLI that drives the clinic-registry MCP tools. Phase 2.",
+  "scripts": {
+    "build": "echo \"not yet implemented\" && exit 0",
+    "typecheck": "echo \"not yet implemented\" && exit 0",
+    "test": "echo \"not yet implemented\" && exit 0"
+  },
+  "dependencies": {
+    "@meditourbuddy/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

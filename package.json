@@ -1,0 +1,23 @@
+{
+  "name": "meditourbuddy",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Clinic Registry MCP — portfolio-first MVP for medical tourism (dental, Canada-outbound)",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @meditourbuddy/shared db:generate",
+    "db:push": "pnpm --filter @meditourbuddy/shared db:push"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
