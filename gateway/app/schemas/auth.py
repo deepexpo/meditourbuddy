@@ -17,6 +17,8 @@ class LoginRequest(BaseModel):
 class UserOut(BaseModel):
     id: uuid.UUID
     email: str
+    tier: str
+    is_admin: bool
     created_at: datetime
 
 

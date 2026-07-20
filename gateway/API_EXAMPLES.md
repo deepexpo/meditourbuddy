@@ -5,10 +5,21 @@ Base URL (local dev): `http://localhost:8000`
 All endpoints except `/health`, `POST /auth/register`, and `POST /auth/login`
 require `Authorization: Bearer <token>`.
 
-The primary flow for the app is **register → login → `POST /cases`** — the
-agent picks which registry tools to call. `GET /mcp/tools` / `POST /mcp/call`
-still work (unchanged) for debugging or a future power-user/admin screen, but
-you shouldn't need to call tools directly for the main product flow anymore.
+The primary flow for the app is **register → login → `POST /cases`**. One
+screen, one endpoint, both tiers — `POST /cases` branches server-side on the
+account's `tier` and always returns the same `Report` shape (§5), so the
+client renders by *field presence*, not by tier:
+
+```
+                    ┌─ tier=free ────► basic_pipeline()  (deterministic, no LLM, <2s)
+POST /cases ── auth ┤
+                    └─ tier=premium ─► agent loop         (Claude + tools, several seconds)
+```
+
+`GET /mcp/tools` / `POST /mcp/call` are **admin/debug only now** (§8b) — the
+client should not call them. Use the typed routes instead: `GET /procedures`,
+`GET /clinics/search`, `GET /clinics/{slug}` (§7). They wrap the same
+registry tools but return clean JSON — no `result[0].text` double-parse.
 
 ## 1. Register
 
@@ -29,18 +40,25 @@ Success `201` (this also logs you in — no separate login call needed):
   "user": {
     "id": "ead64a93-80d5-48e9-badf-fa3cdc8291d8",
     "email": "patient@example.com",
+    "tier": "free",
+    "is_admin": false,
     "created_at": "2026-07-19T06:05:49.433862Z"
   }
 }
 ```
+New accounts always start on `tier: "free"`. There's no self-serve upgrade
+this phase — `tier`/`is_admin` are flipped by SQL only (see §5c). Use
+`user.tier` to decide UI up front (e.g. whether to even attempt the upgrade
+sheet); `access_token`'s JWT also carries `tier`/`is_admin` as claims if you
+need them without a round-trip, but the response body is the easier source.
 
 Failure `409` (email already registered):
 ```json
 { "detail": "An account with this email already exists", "code": "email_taken" }
 ```
 
-Failure `422` (password too short — see §9, this shape is different from the
-others):
+Failure `422` (password too short — see §10, this shape is different from
+the others):
 ```json
 {
   "detail": [
@@ -76,6 +94,13 @@ error either way, so you can't probe which emails are registered):
 Token expires after `JWT_EXPIRE_MINUTES` (default 60 min) — re-login when
 your app gets a 401.
 
+**`tier`/`is_admin` are snapshotted into the token at login/register, not
+re-read per request.** If an account is upgraded to premium (or granted
+admin) via SQL while a token is still live, that token keeps behaving as the
+old tier until it expires or the user logs out/in again. If you build an
+"upgrade requested" flow, tell the user to log out and back in to pick up
+the change — don't expect it to take effect mid-session.
+
 ## 3. Logout
 
 ```
@@ -102,9 +127,14 @@ Success `200`:
 {
   "id": "ead64a93-80d5-48e9-badf-fa3cdc8291d8",
   "email": "patient@example.com",
+  "tier": "free",
+  "is_admin": false,
   "created_at": "2026-07-19T06:05:49.433862Z"
 }
 ```
+This reads `tier`/`is_admin` live from the DB (unlike the JWT claims, which
+are frozen at login) — useful for detecting "you were upgraded, please
+re-login" without waiting for a 401/403 to surface it.
 
 ```
 DELETE /auth/me
@@ -114,7 +144,7 @@ Success `204` (no body). This **hard-deletes** the account and cascades to
 all of that user's cases and reports — irreversible, so confirm in the UI
 before calling it. The token used to delete stops working immediately.
 
-## 5. Create a case (the agent)
+## 5. Create a case
 
 ```
 POST /cases
@@ -133,76 +163,170 @@ Content-Type: application/json
 Only `description` is required. `destination_preference` is `"TR"`, `"MX"`,
 or `"any"` (default). `canadian_quote_cad` and `budget_usd_max` are optional
 numbers; omit `canadian_quote_cad` if the patient has no existing quote to
-compare against.
+compare against. **The request body is identical for both tiers** — the
+account's `tier` decides what happens server-side, not the request.
 
-This call runs a real multi-round Claude tool-use loop against the live
-clinic registry — expect it to take several seconds, and show a loading
-state, not a spinner-blocks-everything UI. There's a hard 60s server-side
-timeout (`CASE_TIMEOUT_SECONDS`).
+- **Free**: a deterministic keyword match on `description` → registry
+  lookups. Zero Anthropic tokens, typically completes in 1–3s.
+- **Premium**: a real multi-round Claude tool-use loop against the live
+  clinic registry. Takes several seconds — show a loading state, not a
+  spinner-blocks-everything UI.
 
-Success `201` (illustrative — the model chooses which/how many options
-based on real registry data, so exact contents vary per run):
+Both share a hard 60s server-side timeout (`CASE_TIMEOUT_SECONDS`).
+
+### 5a. Success `201` — the unified `Report` shape
+
+Every field below is present on **both** tiers; the difference is which
+ones are populated. Render each section by whether its field is non-null,
+not by checking `report_tier`.
+
+Free-tier response (real captured example):
 ```json
 {
-  "id": "54ad2c13-1212-4cee-8d73-7f2e9bb3ce36",
+  "id": "6a4b9fb5-e7b3-4dda-be71-6ddc67823225",
   "status": "complete",
-  "created_at": "2026-07-19T06:13:11.095783Z",
-  "completed_at": "2026-07-19T06:13:14.912004Z",
+  "created_at": "2026-07-20T01:58:17.609215Z",
+  "completed_at": "2026-07-20T01:58:20.332896Z",
   "failure_reason": null,
   "intake": {
-    "description": "I need a single dental implant, looking to save money by traveling abroad.",
-    "canadian_quote_cad": 4500,
-    "destination_preference": "TR",
-    "budget_usd_max": 2000,
+    "description": "I need an all-on-4 full arch implant, budget around $10000 USD",
+    "canadian_quote_cad": null,
+    "destination_preference": "any",
+    "budget_usd_max": null,
     "language": "en"
   },
   "report": {
-    "case_summary": "A single dental implant in Turkey typically costs a fraction of the Canadian quote provided, with several accredited clinics available in Istanbul.",
+    "report_tier": "basic",
+    "case_summary": "Based on your description, we matched this to All-on-4 Full Arch Implants. Here are the top 3 accredited option(s) found, ranked by accreditation strength and price.",
     "procedure": {
-      "code": "IMPLANT_SINGLE",
-      "name": "Single Dental Implant",
+      "code": "IMPLANT_ALL_ON_4",
+      "name": "All-on-4 Full Arch Implants",
       "typical_visits": 2,
-      "recovery_days_onsite": 3
+      "recovery_days_onsite": 5
     },
     "options": [
       {
-        "clinic": { "name": "Vera Smile Dental Clinic", "city": "Istanbul", "country": "TR", "slug": "vera-smile-istanbul" },
+        "clinic": { "name": "Maltepe Dental Clinic", "city": "Istanbul", "country": "TR", "slug": "maltepe-dental-istanbul" },
         "accreditations": [
-          { "body": "ISO_9001", "valid_until": null, "source_url": "https://www.verasmile.com/our-quality-standarts/" }
+          { "body": "ISO_9001", "valid_until": null, "source_url": "https://www.maltepedentalclinic.com/about-us/quality-standards/" }
         ],
-        "price_usd": { "min": 450, "max": 800 },
-        "savings_vs_quote_pct": 82.0,
-        "trip_notes": "2 visits required; plan for 3 days of on-site recovery between them."
+        "price_usd": { "min": 3203.2, "max": 3203.2 },
+        "savings_vs_quote_pct": null,
+        "trip_notes": null,
+        "trip_plan": null,
+        "all_in_cad": null
       }
     ],
     "next_steps": [
-      "Contact the clinic directly to confirm current availability and get a written quote.",
-      "Consult your own dentist before committing to any procedure."
+      "Review the clinics below and their accreditation evidence.",
+      "Contact a clinic directly to confirm current pricing and availability.",
+      "Upgrade to Premium for a full itinerary and all-in cost estimate."
+    ],
+    "locked_features": ["custom_plan", "trip_plan", "all_in_cost", "agent_analysis"],
+    "disclaimer": "Informational only — not medical advice. MediTourBuddy does not recommend treatments. Verify all details directly with the clinic and consult your own dentist.",
+    "trace": null
+  }
+}
+```
+
+Premium-tier response (same request, premium account — trimmed; the model
+chooses which/how many options based on real registry data, so exact
+contents vary per run):
+```json
+{
+  "id": "8ea20b87-b5e1-42f8-80c9-0bc5459c1006",
+  "status": "complete",
+  "created_at": "2026-07-20T02:04:25.794323Z",
+  "completed_at": "2026-07-20T02:05:10.406962Z",
+  "failure_reason": null,
+  "intake": { "...": "same shape as above" },
+  "report": {
+    "report_tier": "full",
+    "case_summary": "The patient is a Canadian seeking a single dental implant in Turkey with a budget of approximately $4,000 USD. One accredited clinic in Istanbul was identified and independently verified via JCI.",
+    "procedure": { "code": "IMPLANT_SINGLE", "name": "Single Dental Implant", "typical_visits": 2, "recovery_days_onsite": 3 },
+    "options": [
+      {
+        "clinic": { "name": "Acıbadem Maslak Hospital", "city": "Istanbul", "country": "TR", "slug": "acibadem-maslak-istanbul" },
+        "accreditations": [
+          { "body": "JCI", "valid_until": null, "source_url": "https://acibademinternational.com/hospital/maslak-hospital/" }
+        ],
+        "price_usd": { "min": 600.0, "max": 1200.0 },
+        "savings_vs_quote_pct": null,
+        "trip_notes": "2 visits required (implant placement + crown fitting); plan for approximately 3 days on-site per visit.",
+        "trip_plan": null,
+        "all_in_cad": null
+      }
+    ],
+    "next_steps": [
+      "Contact Acıbadem Maslak International directly to request a personalised treatment plan and itemised quote.",
+      "Verify your Canadian travel insurance for dental-complication coverage abroad."
+    ],
+    "locked_features": null,
+    "disclaimer": "Informational only — not medical advice. MediTourBuddy does not recommend treatments. Verify all details directly with the clinic and consult your own dentist.",
+    "trace": [
+      { "round": 0, "tool": "list_procedures", "args": { "category": "implant" } },
+      { "round": 1, "tool": "search_clinics", "args": { "procedure_code": "IMPLANT_SINGLE", "country": "TR", "max_budget_usd": 4000 } },
+      { "round": 2, "tool": "verify_accreditation", "args": { "slug": "acibadem-maslak-istanbul", "body": "JCI" } }
     ]
-  },
-  "disclaimer": "Informational only — not medical advice. MediTourBuddy does not recommend treatments. Verify all details directly with the clinic and consult your own dentist.",
-  "trace": [
-    { "round": 0, "tool": "list_procedures", "args": {} },
-    { "round": 1, "tool": "search_clinics", "args": { "procedure_code": "IMPLANT_SINGLE", "country": "TR", "max_budget_usd": 2000 } },
-    { "round": 2, "tool": "verify_accreditation", "args": { "slug": "vera-smile-istanbul" } }
+  }
+}
+```
+
+Field-by-field:
+| Field | Free | Premium | Notes |
+|---|---|---|---|
+| `report_tier` | `"basic"` | `"full"` | The only field you'd branch on, and only for analytics/labeling — not for rendering. |
+| `locked_features` | array of feature keys | `null` | Render each key's card in its natural position as a locked/blurred teaser; tap → upgrade sheet. Log the tap (§9a). Data-driven: don't hardcode which features are locked. |
+| `trace` | `null` | array | Which tools ran, in order — demo/debug value, not for end users. |
+| `options[].trip_notes` / `trip_plan` / `all_in_cad` | always `null` | populated (`trip_plan`/`all_in_cad` are `null` until travel-mcp lands even on premium) | Render the section only if non-null. |
+| everything else (`case_summary`, `procedure`, `options[].clinic`/`accreditations`/`price_usd`/`savings_vs_quote_pct`, `next_steps`, `disclaimer`) | populated | populated | Same shape both tiers. |
+
+`options` can legitimately be `[]` on either tier — say so honestly rather
+than stretch a bad match, so render a real "no matches found" empty state,
+not an error.
+
+### 5b. Failure `422` — free tier, description didn't match a procedure
+
+```json
+{
+  "detail": "Could not determine procedure from description",
+  "code": "PROCEDURE_UNCLEAR",
+  "choices": [
+    { "code": "IMPLANT_SINGLE", "name": "Single Dental Implant", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 3 },
+    { "code": "IMPLANT_ALL_ON_4", "name": "All-on-4 Full Arch Implants", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 5 }
   ]
 }
 ```
-`options` can legitimately be `[]` — the agent is instructed to say so
-honestly rather than stretch a bad match, so render a real "no matches
-found" empty state, not an error.
+Only free-tier accounts can hit this — premium's agent infers the procedure
+itself. Show a procedure picker populated from `choices`; when the patient
+picks one, resubmit `POST /cases` with `description` rewritten to include
+that procedure's exact `name` (e.g. `"Single Dental Implant"`) so the
+keyword matcher resolves it deterministically — there's no separate
+`procedure_code` field on the request, the matcher only reads `description`.
+No case row is created and no quota is consumed for this response.
 
-Failure `504` (agent exceeded the timeout):
+### 5c. Failure `429` — quota exceeded
+
+```json
+{ "detail": "Quota exceeded for your tier", "code": "QUOTA_EXCEEDED" }
+```
+Free: 10 cases/day. Premium: 10 agent runs/month. No case row is created.
+There's no client-visible "quota remaining" field yet — treat this as a
+terminal state for the request and prompt to retry later (free) or contact
+you about premium limits (premium). Tiers are flipped by SQL only right now
+(no self-serve upgrade), so a premium quota bump is a manual op on your end.
+
+### 5d. Failure `504` (agent exceeded the timeout)
 ```json
 { "detail": "Agent run timed out", "code": "case_timeout" }
 ```
 
-Failure `502` (tool/model/validation failure — real captured example, this
-one from a misconfigured API key):
+### 5e. Failure `502` (tool/model/validation failure — real captured example,
+this one from a misconfigured API key)
 ```json
 { "detail": "Agent failed to produce a report", "code": "case_failed" }
 ```
-On either failure, the case itself was still persisted with
+On either 504 or 502, the case itself was still persisted with
 `"status": "failed"` and a `failure_reason` string — `GET /cases/{id}`
 still works and shows why it failed, it just has no `report`.
 
@@ -213,7 +337,14 @@ GET /cases
 Authorization: Bearer <token>
 ```
 Success `200` — the caller's own cases, newest first, **without** the full
-report (use `GET /cases/{id}` for that — keeps the list screen light):
+report (use `GET /cases/{id}` for that — keeps the list screen light).
+**Free tier only ever gets the most recent 1 case back here**, even if more
+exist — `GET /cases/{id}` still works for any of the caller's own older
+cases by ID, this only limits the list view. Premium is unlimited. If you
+want a "see all history" locked card in the history screen, that's a
+client-side decision (there's no `total_count` in the response to compare
+against — track it another way, or just always show the teaser for free
+accounts):
 ```json
 [
   {
@@ -244,62 +375,42 @@ Authorization: Bearer <token>
 ```
 Success `204` (no body). Same 404 behavior as above for a case you don't own.
 
-## 7. List available tools (debug/advanced)
+## 7. Browse clinics/procedures directly (search, clinic profile screens)
+
+Thin typed wrappers around the registry — use these instead of `/mcp/call`
+(now admin-only, §8) for any client-facing browse/search screen. Clean JSON
+in, clean JSON out; no `result[0].text` double-parse.
+
+### 7a. `GET /procedures`
 
 ```
-GET /mcp/tools
+GET /procedures?category=implant
 Authorization: Bearer <token>
 ```
-
-Success `200` (trimmed):
+`category` is optional (`implant` | `restorative` | `cosmetic` | `surgical`).
+Success `200`:
 ```json
 {
-  "tools": [
-    { "name": "list_procedures", "description": "...", "inputSchema": { "...": "..." } },
-    { "name": "search_clinics", "description": "...", "inputSchema": { "required": ["procedure_code"] } },
-    { "name": "get_clinic_profile", "description": "...", "inputSchema": { "required": ["slug"] } },
-    { "name": "compare_procedures", "description": "...", "inputSchema": { "required": ["procedure_code"] } },
-    { "name": "verify_accreditation", "description": "...", "inputSchema": { "required": ["slug"] } }
+  "procedures": [
+    { "code": "IMPLANT_SINGLE", "name": "Single Dental Implant", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 3 },
+    { "code": "IMPLANT_ALL_ON_4", "name": "All-on-4 Full Arch Implants", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 5 }
   ]
 }
 ```
-Use `inputSchema`/`outputSchema` on each tool to drive form validation and
-rendering in your app — they're full JSON Schema.
+Server-cached for up to 1h — don't poll this aggressively, it won't change
+faster than that anyway.
 
-## 8. Call a tool directly (debug/advanced)
+### 7b. `GET /clinics/search`
 
 ```
-POST /mcp/call
+GET /clinics/search?procedure_code=IMPLANT_ALL_ON_4&country=TR&max_budget_usd=8000
 Authorization: Bearer <token>
-Content-Type: application/json
 ```
-```json
-{ "name": "<tool name>", "arguments": { "...": "..." } }
-```
+Query params: `procedure_code` (required), `country` (`TR`|`MX`, optional),
+`max_budget_usd` (optional), `language` (default `en`),
+`require_accreditation` (default `true`).
 
-Response shape is always the same envelope — MCP's content array:
-```json
-{
-  "result": [
-    { "type": "text", "text": "<JSON-encoded string — parse this>", "annotations": null, "meta": null }
-  ]
-}
-```
-
-**Important:** `result[0].text` is a JSON *string*, not a nested object. Your
-app must `JSON.parse()` (or equivalent) it to get the actual data.
-
-### Example: search_clinics
-
-Request:
-```json
-{
-  "name": "search_clinics",
-  "arguments": { "procedure_code": "IMPLANT_ALL_ON_4", "country": "TR", "max_budget_usd": 8000 }
-}
-```
-
-`result[0].text`, parsed:
+Success `200`:
 ```json
 {
   "clinics": [
@@ -312,30 +423,21 @@ Request:
       "price_range_usd": { "min": 3203.2, "max": 3203.2, "stale": false },
       "practitioner_count": 1,
       "verified_at": null
-    },
-    {
-      "slug": "vera-smile-istanbul",
-      "name": "Vera Smile Dental Clinic",
-      "city": "Istanbul",
-      "country": "TR",
-      "accreditations": ["ISO_9001"],
-      "price_range_usd": { "min": 4000.0, "max": 7436.0, "stale": false },
-      "practitioner_count": 1,
-      "verified_at": null
     }
   ],
   "disclaimer": "Informational only — not medical advice. Verify directly with the clinic."
 }
 ```
+Note `accreditations` here is just body names (`["JCI"]`) — no `source_url`.
+For the full evidence chain, follow up with `GET /clinics/{slug}` (§7c).
 
-### Example: get_clinic_profile
+### 7c. `GET /clinics/{slug}`
 
-Request:
-```json
-{ "name": "get_clinic_profile", "arguments": { "slug": "vera-smile-istanbul" } }
 ```
-
-`result[0].text`, parsed (trimmed):
+GET /clinics/vera-smile-istanbul
+Authorization: Bearer <token>
+```
+Success `200` (trimmed):
 ```json
 {
   "clinic": {
@@ -367,26 +469,125 @@ Request:
   "disclaimer": "Informational only — not medical advice. Verify directly with the clinic."
 }
 ```
+This is where `source_url`/`valid_until` for each accreditation live — the
+`POST /cases` report already inlines this per-option, so you only need this
+route standalone for a dedicated clinic-profile screen.
 
-### Example: list_procedures (no required args)
+## 8. Admin/debug: raw MCP tool access
+
+`/mcp/tools` and `/mcp/call` now require `is_admin: true` on the account
+(§4) — any other account gets `403 {"detail": "Admin access required",
+"code": "forbidden"}`. **The client app should not call these** — use the
+typed routes in §7 instead. Kept here for an internal admin/debug screen or
+manual testing against tools that don't have a typed wrapper yet
+(`compare_procedures`, `verify_accreditation`).
+
+### 8a. `GET /mcp/tools`
+
+```
+GET /mcp/tools
+Authorization: Bearer <token>   (admin account)
+```
+
+Success `200` (trimmed):
+```json
+{
+  "tools": [
+    { "name": "list_procedures", "description": "...", "inputSchema": { "...": "..." } },
+    { "name": "search_clinics", "description": "...", "inputSchema": { "required": ["procedure_code"] } },
+    { "name": "get_clinic_profile", "description": "...", "inputSchema": { "required": ["slug"] } },
+    { "name": "compare_procedures", "description": "...", "inputSchema": { "required": ["procedure_code"] } },
+    { "name": "verify_accreditation", "description": "...", "inputSchema": { "required": ["slug"] } }
+  ]
+}
+```
+Use `inputSchema`/`outputSchema` on each tool to drive form validation and
+rendering in an admin screen — they're full JSON Schema.
+
+### 8b. `POST /mcp/call`
+
+```
+POST /mcp/call
+Authorization: Bearer <token>   (admin account)
+Content-Type: application/json
+```
+```json
+{ "name": "<tool name>", "arguments": { "...": "..." } }
+```
+
+Response shape is always the same envelope — MCP's content array:
+```json
+{
+  "result": [
+    { "type": "text", "text": "<JSON-encoded string — parse this>", "annotations": null, "meta": null }
+  ]
+}
+```
+
+**Important:** `result[0].text` is a JSON *string*, not a nested object. Your
+app must `JSON.parse()` (or equivalent) it to get the actual data.
+
+`search_clinics`, `get_clinic_profile`, and `list_procedures` have typed
+wrappers now (§7) — prefer those. The two tools below don't yet, so this is
+still the only way to reach them:
+
+### Example: compare_procedures
 
 Request:
 ```json
-{ "name": "list_procedures", "arguments": {} }
+{
+  "name": "compare_procedures",
+  "arguments": { "procedure_code": "IMPLANT_SINGLE", "canadian_quote_cad": 4500, "country": "TR" }
+}
 ```
 
-`result[0].text`, parsed (trimmed):
+`result[0].text`, parsed:
 ```json
 {
-  "procedures": [
-    { "code": "IMPLANT_SINGLE", "name": "Single Dental Implant", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 3 },
-    { "code": "IMPLANT_ALL_ON_4", "name": "All-on-4 Full Arch Implants", "category": "implant", "typical_visits": 2, "recovery_days_onsite": 5 }
+  "procedure": { "code": "IMPLANT_SINGLE", "name": "Single Dental Implant", "typical_visits": 2, "recovery_days_onsite": 3 },
+  "options": [
+    { "clinic_slug": "vera-smile-istanbul", "clinic_name": "Vera Smile Dental Clinic", "price_range_usd": { "min": 450, "max": 800, "stale": false }, "savings_vs_quote_pct": 82.0 }
+  ],
+  "fx_rate_used": { "cad_usd": 0.73, "as_of": "2026-06-01" },
+  "disclaimer": "Informational only — not medical advice. Verify directly with the clinic."
+}
+```
+
+### Example: verify_accreditation
+
+Request:
+```json
+{ "name": "verify_accreditation", "arguments": { "slug": "acibadem-maslak-istanbul", "body": "JCI" } }
+```
+
+`result[0].text`, parsed:
+```json
+{
+  "results": [
+    { "body": "JCI", "status": "verified", "source_url": "https://acibademinternational.com/hospital/maslak-hospital/", "valid_until": null, "checked_at": "2026-07-20T02:04:52.101Z" }
   ],
   "disclaimer": "Informational only — not medical advice. Verify directly with the clinic."
 }
 ```
 
-## 9. Error handling — three different shapes
+## 9. Analytics
+
+### 9a. `POST /analytics/locked-card-tap`
+
+```
+POST /analytics/locked-card-tap
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+```json
+{ "feature": "trip_plan" }
+```
+Fire this whenever a free-tier user taps a locked card (§5a) — `feature`
+should be one of the strings from that report's `locked_features` array.
+Success `204` (no body). This is server-side signal for "which lock gets
+tapped most = what people would pay for" — no response to act on client-side.
+
+## 10. Error handling — three different shapes
 
 **1. Domain errors** (auth/cases business logic) — a flat object with both
 `detail` (human-readable) and `code` (machine-readable, stable, safe to
@@ -398,9 +599,12 @@ switch on):
 |---|---|---|
 | `email_taken` | 409 | Register with an email already in use |
 | `invalid_credentials` | 401 | Login with wrong email or unknown email |
+| `PROCEDURE_UNCLEAR` | 422 | Free tier: `description` didn't match a known procedure — has a `choices` array (§5b) |
+| `QUOTA_EXCEEDED` | 429 | Free: 10 cases/day. Premium: 10 agent runs/month (§5c) |
 | `case_not_found` | 404 | Case doesn't exist, or belongs to another user |
 | `case_timeout` | 504 | Agent run exceeded the server-side timeout |
 | `case_failed` | 502 | Agent/tool/model failure producing a report |
+| `forbidden` | 403 | `/mcp/tools` or `/mcp/call` called by a non-admin account (§8) |
 | `http_error` | varies | Generic fallback — e.g. missing/expired/invalid/logged-out Bearer token (401) |
 
 **2. Request validation errors** (malformed JSON body — e.g. missing
@@ -415,7 +619,7 @@ required field, password too short) — FastAPI's own shape, `detail` is an
 ```
 Check whether `detail` is a string or an array to tell these two apart.
 
-**3. Tool-level errors** (only from `POST /mcp/call`, §8 — bad tool name or
+**3. Tool-level errors** (only from `POST /mcp/call`, §8b — bad tool name or
 bad arguments per the tool's own validation) come back as `200 OK` with the
 error *inside* the content array:
 ```json
@@ -434,25 +638,35 @@ either produces a real report or a `case_failed`/502.
 ## Quick reference: curl
 
 ```bash
-# Register (or use /auth/login on subsequent runs)
+# Register (or use /auth/login on subsequent runs) — new accounts are tier=free
 TOKEN=$(curl -s -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"patient@example.com","password":"correct-horse-battery"}' \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 
-# Run a case
+# Run a case — same call for both tiers, response's report_tier tells you which ran
 curl -s -X POST http://localhost:8000/cases \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"description":"Need a single dental implant, exploring options abroad.","canadian_quote_cad":4500,"destination_preference":"TR","budget_usd_max":2000}'
 
-# List past cases
+# List past cases (free tier: only the most recent 1 comes back)
 curl -s http://localhost:8000/cases -H "Authorization: Bearer $TOKEN"
 
-# (debug) list/call tools directly
+# Browse clinics/procedures (typed routes — any authenticated account)
+curl -s "http://localhost:8000/procedures?category=implant" -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:8000/clinics/search?procedure_code=IMPLANT_ALL_ON_4&country=TR&max_budget_usd=8000" \
+  -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8000/clinics/vera-smile-istanbul -H "Authorization: Bearer $TOKEN"
+
+# Log a locked-card tap (free tier UI)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/analytics/locked-card-tap \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"feature":"trip_plan"}'
+
+# (admin/debug only — 403 for non-admin accounts) list/call tools directly
 curl -s http://localhost:8000/mcp/tools -H "Authorization: Bearer $TOKEN"
 curl -s -X POST http://localhost:8000/mcp/call \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"search_clinics","arguments":{"procedure_code":"IMPLANT_ALL_ON_4","country":"TR","max_budget_usd":8000}}'
+  -d '{"name":"compare_procedures","arguments":{"procedure_code":"IMPLANT_SINGLE","canadian_quote_cad":4500}}'
 
 # Logout — invalidates $TOKEN (and every other session on this account)
 curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/logout \

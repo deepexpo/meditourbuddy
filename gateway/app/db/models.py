@@ -11,12 +11,19 @@ from app.db.base import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("tier in ('free', 'premium')", name="ck_users_tier"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     email: Mapped[str] = mapped_column(CITEXT, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    # Default tier for new signups; upgraded manually via SQL (no payment
+    # system yet). Carried into the JWT at login/register — see auth.py.
+    tier: Mapped[str] = mapped_column(String, nullable=False, default="free")
+    is_admin: Mapped[bool] = mapped_column(nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

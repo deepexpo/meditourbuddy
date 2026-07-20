@@ -4,7 +4,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.services.orchestrator import Report
+from app.schemas.report import Report
+
+
+class CaseIntake(BaseModel):
+    description: str
+    canadian_quote_cad: float | None = None
+    destination_preference: str = "any"  # "TR" | "MX" | "any"
+    budget_usd_max: float | None = None
+    language: str = "en"
 
 
 class CaseListItem(BaseModel):
@@ -20,5 +28,3 @@ class CaseListItem(BaseModel):
 class CaseDetail(CaseListItem):
     intake: dict[str, Any]
     report: Report | None = None
-    disclaimer: str | None = None
-    trace: list[dict[str, Any]] | None = None

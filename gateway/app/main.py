@@ -9,7 +9,7 @@ from app.config import settings
 from app.db.session import AsyncSessionLocal, engine
 from app.errors import AppError
 from app.mcp_client import mcp_manager
-from app.routers import auth, cases, mcp
+from app.routers import analytics, auth, cases, clinics, mcp
 
 
 @asynccontextmanager
@@ -36,7 +36,10 @@ app.add_middleware(
 
 @app.exception_handler(AppError)
 async def app_error_handler(request, exc: AppError):
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "code": exc.code, **exc.extra},
+    )
 
 
 @app.exception_handler(HTTPException)
@@ -47,6 +50,8 @@ async def http_exception_handler(request, exc: HTTPException):
 app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(mcp.router)
+app.include_router(clinics.router)
+app.include_router(analytics.router)
 
 
 @app.get("/health")

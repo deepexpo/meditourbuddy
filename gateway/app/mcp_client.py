@@ -11,6 +11,7 @@ To connect to MULTIPLE MCP servers, keep a dict of named ClientSessions
 here instead of a single `self.session`, and pick one per request.
 """
 
+import json
 from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
@@ -54,6 +55,15 @@ class MCPClientManager:
         assert self.session is not None, "MCP session not connected"
         result = await self.session.call_tool(name, arguments)
         return [content.model_dump() for content in result.content]
+
+    async def call_tool_json(self, name: str, arguments: dict) -> dict:
+        """Call a tool and parse its text content as JSON — the MCP tools
+        all return a single JSON text block, so this is what removes the
+        double-JSON-parse every caller would otherwise have to do.
+        """
+        content = await self.call_tool(name, arguments)
+        text = "\n".join(b.get("text", "") for b in content if b.get("type") == "text")
+        return json.loads(text)
 
 
 mcp_manager = MCPClientManager()

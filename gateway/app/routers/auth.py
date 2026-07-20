@@ -29,7 +29,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         raise AppError(409, "An account with this email already exists", "email_taken")
     await db.refresh(user)
 
-    token = create_access_token(user.id)
+    token = create_access_token(user.id, user.tier, user.is_admin)
     return AuthResponse(access_token=token, user=UserOut.model_validate(user, from_attributes=True))
 
 
@@ -42,27 +42,27 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not verify_password(payload.password, user.password_hash):
         raise AppError(401, "Invalid email or password", "invalid_credentials")
 
-    token = create_access_token(user.id)
+    token = create_access_token(user.id, user.tier, user.is_admin)
     return AuthResponse(access_token=token, user=UserOut.model_validate(user, from_attributes=True))
 
 
 @router.post("/logout", status_code=204)
-async def logout(user_id=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    user = await db.get(User, user_id)
+async def logout(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, current_user.id)
     user.sessions_invalidated_at = datetime.now(timezone.utc)
     await db.commit()
     return Response(status_code=204)
 
 
 @router.get("/me", response_model=UserOut)
-async def get_me(user_id=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    user = await db.get(User, user_id)
+async def get_me(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, current_user.id)
     return UserOut.model_validate(user, from_attributes=True)
 
 
 @router.delete("/me", status_code=204)
-async def delete_me(user_id=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    user = await db.get(User, user_id)
+async def delete_me(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    user = await db.get(User, current_user.id)
     await db.delete(user)
     await db.commit()
     return Response(status_code=204)

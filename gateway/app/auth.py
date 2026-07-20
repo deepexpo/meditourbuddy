@@ -35,6 +35,12 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class CurrentUser(BaseModel):
+    id: uuid.UUID
+    tier: str
+    is_admin: bool
+
+
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -43,7 +49,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(user_id: uuid.UUID) -> str:
+def create_access_token(user_id: uuid.UUID, tier: str, is_admin: bool) -> str:
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=settings.jwt_expire_minutes)
     payload = {
@@ -56,13 +62,17 @@ def create_access_token(user_id: uuid.UUID) -> str:
         # with full precision, so ordering is always unambiguous.
         "iat": now.timestamp(),
         "exp": expire,
+        # Snapshotted at login/register, not re-read from the DB per
+        # request — changing tier or admin status requires re-login.
+        "tier": tier,
+        "is_admin": is_admin,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
-) -> uuid.UUID:
+) -> CurrentUser:
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -72,6 +82,8 @@ async def get_current_user(
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = uuid.UUID(payload.get("sub"))
         issued_at = datetime.fromtimestamp(payload["iat"], tz=timezone.utc)
+        tier = payload["tier"]
+        is_admin = payload["is_admin"]
     except (jwt.PyJWTError, ValueError, TypeError, KeyError):
         raise credentials_error
 
@@ -85,4 +97,4 @@ async def get_current_user(
     _, invalidated_at = row
     if invalidated_at is not None and issued_at < invalidated_at:
         raise credentials_error
-    return user_id
+    return CurrentUser(id=user_id, tier=tier, is_admin=is_admin)

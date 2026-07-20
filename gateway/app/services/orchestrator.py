@@ -15,20 +15,15 @@ import json
 from typing import Any
 
 from anthropic import AsyncAnthropic
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 from app.mcp_client import mcp_manager
+from app.schemas.cases import CaseIntake
+from app.schemas.report import DISCLAIMER, ModelReportPayload, Report
 
 MAX_ROUNDS = 10  # circuit breaker: hard stop on runaway tool loops
 MODEL = "claude-sonnet-4-6"
-
-# Injected by code AFTER validation — never trust the model to include it.
-DISCLAIMER = (
-    "Informational only — not medical advice. MediTourBuddy does not "
-    "recommend treatments. Verify all details directly with the clinic "
-    "and consult your own dentist."
-)
 
 SYSTEM_PROMPT = """\
 You are MediTourBuddy, a medical-tourism information coordinator helping a
@@ -68,60 +63,8 @@ Maximum 3 options.
 """
 
 
-class CaseIntake(BaseModel):
-    description: str
-    canadian_quote_cad: float | None = None
-    destination_preference: str = "any"  # "TR" | "MX" | "any"
-    budget_usd_max: float | None = None
-    language: str = "en"
-
-
-# ---- Report schema (mirrors agent-spec.md; validated server-side) ----
-
-class _Clinic(BaseModel):
-    name: str
-    city: str
-    country: str
-    slug: str
-
-
-class _Accreditation(BaseModel):
-    body: str
-    valid_until: str | None = None
-    source_url: str
-
-
-class _Price(BaseModel):
-    min: float
-    max: float
-
-
-class _Option(BaseModel):
-    clinic: _Clinic
-    accreditations: list[_Accreditation]
-    price_usd: _Price
-    savings_vs_quote_pct: float | None = None
-    trip_notes: str
-
-
-class _Procedure(BaseModel):
-    code: str
-    name: str
-    typical_visits: int
-    recovery_days_onsite: int
-
-
-class Report(BaseModel):
-    case_summary: str
-    procedure: _Procedure
-    options: list[_Option] = Field(max_length=3)
-    next_steps: list[str]
-
-
 class CaseResult(BaseModel):
     report: Report
-    disclaimer: str
-    trace: list[dict[str, Any]]  # which tools ran, in order — demo gold
     input_tokens: int
     output_tokens: int
 
@@ -218,7 +161,7 @@ async def run_case(intake: CaseIntake) -> CaseResult:
 
     # Validate; on failure, one retry telling the model exactly what was wrong
     try:
-        report = Report.model_validate(_extract_json(final_text))
+        payload = ModelReportPayload.model_validate(_extract_json(final_text))
     except (json.JSONDecodeError, ValidationError) as err:
         messages.append({"role": "assistant", "content": final_text})
         messages.append(
@@ -240,12 +183,20 @@ async def run_case(intake: CaseIntake) -> CaseResult:
         input_tokens += retry.usage.input_tokens
         output_tokens += retry.usage.output_tokens
         retry_text = "".join(b.text for b in retry.content if b.type == "text")
-        report = Report.model_validate(_extract_json(retry_text))  # raises → 500, correctly
+        payload = ModelReportPayload.model_validate(_extract_json(retry_text))  # raises → 500, correctly
+
+    # Envelope fields are injected here, never trusted from the model —
+    # same pattern as the disclaimer.
+    report = Report(
+        report_tier="full",
+        disclaimer=DISCLAIMER,
+        trace=trace,
+        locked_features=None,
+        **payload.model_dump(),
+    )
 
     return CaseResult(
         report=report,
-        disclaimer=DISCLAIMER,
-        trace=trace,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )
