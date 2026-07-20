@@ -11,11 +11,11 @@ class Settings(BaseSettings):
 
     # MCP server (stdio transport)
     mcp_server_command: str = "node"
-    mcp_server_args: str = "/absolute/path/to/meditourbuddy/packages/clinic-registry-mcp/dist/index.js"
+    mcp_server_args: str = "packages/clinic-registry-mcp/dist/index.js"
     database_url: str = "postgresql://..."
 
     # Gateway DB (users/cases/reports) — defaults to the same Supabase
-    # instance as `database_url` (different schema), so most deployments
+    # instance as `database_url` (different schema), so most deployment
     # never need to set this separately. Override only if the gateway DB
     # ever moves to its own instance.
     gateway_database_url: str = ""

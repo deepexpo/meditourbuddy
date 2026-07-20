@@ -1,0 +1,38 @@
+# ── Dependency directories ────────────────────────────────────────────────────
+node_modules/
+gateway/.venv/
+**/__pycache__/
+**/*.pyc
+
+# ── Build artefacts — dist/ is intentionally NOT excluded so the pre-built ───
+# packages/clinic-registry-mcp/dist/ and packages/shared/dist/ are available
+# in the Docker build context. We skip tsc inside Docker entirely (avoids
+# TypeScript/drizzle type issues in dev-only seed files).
+build/
+coverage/
+.turbo/
+
+# ── Secrets & local config ────────────────────────────────────────────────────
+.env
+.env.*
+gateway/.env
+gateway/.env.*
+
+# ── VCS & editor noise ────────────────────────────────────────────────────────
+.git/
+.gitignore
+.DS_Store
+.vscode/
+*.log
+
+# ── Docs & test files (not needed at runtime) ────────────────────────────────
+docs/
+**/test/
+**/*.test.ts
+**/*.spec.ts
+**/vitest.config.*
+README.md
+API_EXAMPLES.md
+
+# ── Lock file — pnpm-lock is needed for pnpm install --frozen-lockfile ────────
+# (pnpm-lock.yaml is intentionally NOT excluded)
