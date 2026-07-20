@@ -28,6 +28,11 @@ class MCPClientManager:
         params = StdioServerParameters(
             command=settings.mcp_server_command,
             args=settings.mcp_server_args_list,
+            # DATABASE_URL here is the clinic-registry DB (public schema — clinics,
+            # procedures, pricing) consumed by the MCP subprocess.  Both this gateway
+            # and the MCP server share the same Supabase instance; the gateway uses
+            # the `gateway` schema (users/cases/reports) via gateway_database_url_resolved,
+            # while the MCP server reads/writes the `public` schema via this var.
             env={"DATABASE_URL": settings.database_url},
         )
         read_stream, write_stream = await self._stack.enter_async_context(stdio_client(params))
