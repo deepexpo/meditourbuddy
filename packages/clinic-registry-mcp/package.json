@@ -3,16 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP server exposing the clinic registry tools (search_clinics, get_clinic_profile, verify_accreditation, compare_procedures, list_procedures). Build order step 3.",
+  "description": "MCP server exposing the clinic registry tools (list_procedures, search_clinics, get_clinic_profile, compare_procedures, verify_accreditation).",
+  "main": "./dist/index.js",
   "scripts": {
-    "build": "echo \"not yet implemented\" && exit 0",
-    "typecheck": "echo \"not yet implemented\" && exit 0",
-    "test": "echo \"not yet implemented\" && exit 0"
+    "build:shared": "pnpm --filter @meditourbuddy/shared build",
+    "build": "pnpm run build:shared && tsc -p tsconfig.build.json",
+    "typecheck": "pnpm run build:shared && tsc -p tsconfig.json --noEmit",
+    "dev": "pnpm run build:shared && tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "pnpm run build:shared && vitest run"
   },
   "dependencies": {
-    "@meditourbuddy/shared": "workspace:*"
+    "@meditourbuddy/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "drizzle-orm": "^0.33.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/node": "^20.14.15",
+    "tsx": "^4.16.5",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }

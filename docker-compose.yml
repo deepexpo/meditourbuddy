@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: meditourbuddy_test
+    ports:
+      # Deliberately not 5432, so this never collides with a locally installed Postgres.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - meditourbuddy_test_pgdata:/var/lib/postgresql/data
+
+volumes:
+  meditourbuddy_test_pgdata:

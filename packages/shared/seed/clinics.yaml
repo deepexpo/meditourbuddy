@@ -1,0 +1,544 @@
+# Real, researched clinics. First 3 from build order step 2 (pilot); remaining from step 5
+# (finishing the seed data). Currently 14 of the spec's target 15 (7 Istanbul, 7 Mexico) — one
+# Istanbul clinic short; every remaining real candidate checked either duplicated an existing
+# entry or failed the "no source, no row" accreditation bar. Sources are cited inline.
+clinics:
+  - slug: acibadem-maslak-istanbul
+    name: Acıbadem Maslak Hospital
+    country: TR
+    city: Istanbul
+    address: "Büyükdere Cad. No:40, Maslak, Sarıyer, İstanbul, Türkiye"
+    languages: [en, tr, ar, ru, de, fr]
+    yearEstablished: 2009
+    website: "https://acibademinternational.com/hospital/maslak-hospital/"
+    accreditations:
+      - body: JCI
+        sourceUrl: "https://acibademinternational.com/hospital/maslak-hospital/"
+    practitioners:
+      - fullName: "Ahmet Ziya Yazgan"
+        title: "Oral & Dental Health Specialist"
+        licenseCountry: TR
+        yearsExperience: 25
+        profileUrl: "https://acibademinternational.com/doctor/ahmet-ziya-yazgan/"
+    procedures:
+      # Acıbadem does not publish hospital pricing (consultation-based quotes).
+      # Market-rate estimate for comparable JCI-accredited hospital-tier Istanbul implant care —
+      # not clinic-confirmed; relies on the stale-pricing flag + blanket disclaimer.
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 600
+        priceMax: 1200
+        currency: USD
+        includes: [consultation, cbct_scan]
+        lastVerified: "2026-07-03"
+
+  - slug: maltepe-dental-istanbul
+    name: "Maltepe Dental Clinic (Özel MDC Ağız ve Diş Sağlığı Polikliniği)"
+    country: TR
+    city: Istanbul
+    address: "Koşuyolu Mahallesi, Koşuyolu Caddesi No. 51/1, 34718 Kadıköy, İstanbul, Türkiye"
+    languages: [en, de, fr, es, ru, tr]
+    website: "https://www.maltepedentalclinic.com/"
+    accreditations:
+      - body: ISO_9001
+        sourceUrl: "https://www.maltepedentalclinic.com/about-us/quality-standards/"
+    practitioners:
+      - fullName: "Yusuf Ilhan"
+        title: Prosthodontist
+        licenseCountry: TR
+        yearsExperience: 25
+        profileUrl: "https://www.maltepedentalclinic.com/our-team/"
+    procedures:
+      # Own published price list: https://www.maltepedentalclinic.com/price-list/
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 425
+        priceMax: 720
+        currency: EUR
+        includes: [consultation]
+        lastVerified: "2026-07-03"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 2800
+        priceMax: 2800
+        currency: EUR
+        includes: [consultation, hotel_transfer]
+        lastVerified: "2026-07-03"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 250
+        priceMax: 250
+        currency: EUR
+        includes: [consultation]
+        lastVerified: "2026-07-03"
+      - procedureCode: VENEER_EMAX
+        priceMin: 300
+        priceMax: 300
+        currency: EUR
+        includes: [consultation]
+        lastVerified: "2026-07-03"
+      - procedureCode: ROOT_CANAL
+        priceMin: 115
+        priceMax: 115
+        currency: EUR
+        includes: [consultation]
+        lastVerified: "2026-07-03"
+
+  - slug: sani-dental-group-los-algodones
+    name: Sani Dental Group
+    country: MX
+    city: "Los Algodones"
+    address: "287 Álamo St, Los Algodones, Baja California 21970, Mexico"
+    languages: [en, es]
+    yearEstablished: 1985
+    website: "https://sanidentalgroup.com/"
+    accreditations:
+      # JCI/GHA do not apply to this clinic; NATIONAL reflects the Mexican Council of Medical
+      # Tourism certification + Health Tourism Stamp from the Mexican federal government.
+      - body: NATIONAL
+        sourceUrl: "https://sanidentalgroup.com/about-us/credentials"
+    practitioners:
+      - fullName: "Enrique Arturo Jiménez Álvarez"
+        title: Implantologist
+        licenseCountry: MX
+        profileUrl: "https://sanidentalgroup.com/doctors/enrique-arturo-jimenez-alvarez"
+    procedures:
+      # Own published price list: https://sanidentalgroup.com/price-list
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 1610
+        priceMax: 1610
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-03"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 8110
+        priceMax: 8110
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-03"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 490
+        priceMax: 490
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-03"
+      - procedureCode: VENEER_EMAX
+        priceMin: 450
+        priceMax: 450
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-03"
+      - procedureCode: ROOT_CANAL
+        priceMin: 340
+        priceMax: 340
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-03"
+
+  # --- Step 5: remaining clinics, researched 2026-07-16 ---
+
+  - slug: vera-smile-istanbul
+    name: "Vera Smile Dental Clinic"
+    country: TR
+    city: Istanbul
+    address: "Kordonboyu, Turgut Özal Blv. No 47, Kat:3, 34860 Kartal/İstanbul, Türkiye"
+    languages: [en, tr, ru, fr, de, es, it, pt, ar]
+    yearEstablished: 2013
+    website: "https://www.verasmile.com/"
+    accreditations:
+      - body: ISO_9001
+        sourceUrl: "https://www.verasmile.com/our-quality-standarts/"
+    practitioners:
+      - fullName: "Nurlan Gasimov"
+        title: "General & Cosmetic Dentist"
+        licenseCountry: TR
+        yearsExperience: 12
+        profileUrl: "https://www.verasmile.com/our-doctors/nurlan-gasimov/"
+    procedures:
+      # Own pricing pages: verasmile.com/dental-implants/turkey/, /dental-implants/all-on-4/turkey/cost/,
+      # /cosmetic-dentistry/dental-crowns/, /cosmetic-dentistry/veneers/ — marketing-copy ranges, not a
+      # formal downloadable price list, treat as indicative.
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 450
+        priceMax: 800
+        currency: EUR
+        includes: [implant_screw, abutment, crown]
+        lastVerified: "2026-07-16"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 3500
+        priceMax: 6500
+        currency: EUR
+        includes: [consultation, xray, implant_surgery, temporary_prosthesis, final_bridge]
+        lastVerified: "2026-07-16"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 200
+        priceMax: 400
+        currency: EUR
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: VENEER_EMAX
+        priceMin: 200
+        priceMax: 350
+        currency: EUR
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: TEETH_WHITENING
+        priceMin: 150
+        priceMax: 500
+        currency: EUR
+        includes: [whitening_session]
+        lastVerified: "2026-07-16"
+
+  - slug: dentspa-istanbul
+    name: "DentSpa Oral & Dental Health Clinic"
+    country: TR
+    city: Istanbul
+    address: "Teşvikiye Mah. Hakkı Yeten Cad. Terrace Fulya Center-1 No:11 K:M4, 34365 Şişli/İstanbul, Türkiye"
+    languages: [en, tr, ar, fr, de, es, ru, it]
+    yearEstablished: 2018
+    website: "https://dentspa.com/"
+    accreditations:
+      # ISO 9001:2015 badge shown in the "Approved by" section of the clinic's own about-us
+      # page, alongside Turkish Ministry of Health / TDB / TURSAB logos — a badge claim, not a
+      # certificate number, so weaker evidence than Vera Smile's dated quality-standards page.
+      - body: ISO_9001
+        sourceUrl: "https://dentspa.com/about-us/"
+    practitioners:
+      - fullName: "Bürkan Berkay Baş"
+        title: "Prosthodontic Specialist"
+        licenseCountry: TR
+        yearsExperience: 10
+        profileUrl: "https://dentspa.com/doctors/burkan-berkay-bas/"
+    # No numeric pricing confirmed on dentspa.com (implant/veneer pages checked directly) —
+    # omitting procedures rather than risk publishing a figure the clinic doesn't actually list.
+    procedures: []
+
+  - slug: istanbul-dental-center
+    name: "Istanbul Dental Center"
+    country: TR
+    city: Istanbul
+    address: "Rumeli Caddesi No: 71, Kat: 4, Şişli, İstanbul, Türkiye"
+    languages: [en, tr, fr, ru, ar]
+    website: "https://istanbuldentalcenter.com/"
+    accreditations:
+      # Weakest accreditation claim in this file: clinic's own homepage brands itself "the only
+      # ISO-certified dental clinic from the UK" but no certificate number or dedicated
+      # certificate page exists, and UKAS CertCheck could not independently confirm it.
+      - body: ISO_9001
+        sourceUrl: "https://istanbuldentalcenter.com/"
+    practitioners:
+      - fullName: "Türker Sandallı"
+        title: "Professor — Aesthetic Dentistry, Orthodontics & Smile Design"
+        licenseCountry: TR
+        yearsExperience: 55
+        profileUrl: "https://istanbuldentalcenter.com/team/prof-dr-turker-sandalli/"
+    # No published price list found (homepage, about-us, treatments pages checked) — quote-on-request.
+    procedures: []
+
+  - slug: yeditepe-dental-hospital-istanbul
+    name: "Yeditepe University Dental Hospital"
+    country: TR
+    city: Istanbul
+    address: "Bağdat Cd. No: 238, Caddebostan Mah., 34728 Göztepe, Kadıköy/İstanbul, Türkiye"
+    languages: [en, tr, ar, fr, de]
+    yearEstablished: 1996
+    website: "https://yeditepedentalhospital.com/"
+    accreditations:
+      # JCI-accredited 5 times since 2012 (2012/2015/2018/2022) per the hospital group's own site.
+      - body: JCI
+        sourceUrl: "https://yeditepehastaneleri.com/en/hospitals/yeditepe-university-dental-hospital"
+    practitioners:
+      - fullName: "Zeynep Özkurt Kayahan"
+        title: "Professor, Prosthetic Dentistry (Prosthodontics)"
+        licenseCountry: TR
+        yearsExperience: 20
+        profileUrl: "https://yeditepedentalhospital.com/academic-dentists-istanbul/professor-dr-zeynep-ozkurt-kayahan/"
+    # No published price list on yeditepedentalhospital.com or dishekimligi.yeditepe.edu.tr — quote-on-request.
+    procedures: []
+
+  - slug: medicana-international-istanbul
+    name: "Medicana International Istanbul Hospital"
+    country: TR
+    city: Istanbul
+    address: "Büyükşehir Mah., Beylikdüzü Cd. No:3, 34520 Beylikdüzü/İstanbul, Türkiye"
+    languages: [en, tr, ar, ru]
+    website: "https://www.medicanainternational.com/en/international-istanbul"
+    accreditations:
+      # JCI since 2010, renewed 2013/2016, per Medicana's own quality-policy page which lists
+      # accreditation years per hospital in the group.
+      - body: JCI
+        sourceUrl: "https://www.medicanainternational.com/en/our-corporate/our-quality-policy"
+    practitioners:
+      - fullName: "Gülcan Pirbudak"
+        title: "Prosthodontics Specialist"
+        licenseCountry: TR
+        yearsExperience: 16
+        profileUrl: "https://www.medicana.com.tr/hekim-detay/15891/gulcan-pirbudak"
+    # No official price list found; third-party aggregators quote a vague "$200-$1000" range but
+    # that isn't the clinic's own published pricing, so it's excluded rather than used.
+    procedures: []
+
+  - slug: dental-solutions-los-algodones
+    name: "Dental Solutions Algodones"
+    country: MX
+    city: "Los Algodones"
+    address: "Calle Tercera 160, Vicente Guerrero, 21970, Baja California, Mexico"
+    languages: [en, es]
+    yearEstablished: 2014
+    website: "https://dentalsolutionsalgodones.com/"
+    # No verifiable clinic-level accreditation: site claims general "ADA" affiliation (a US
+    # membership body, not a checkable Mexican-national credential) — no COFEPRIS/ISO/CMTM claim
+    # found. Left empty rather than forcing a NATIONAL row; require_accreditation filters this out
+    # of default search results, which is the guardrail working as intended.
+    accreditations: []
+    practitioners:
+      - fullName: "Xochiquetzalli Bojorquez"
+        title: "DDS, Implant & All-on-4 Specialist"
+        licenseCountry: MX
+        yearsExperience: 10
+        profileUrl: "https://dentalsolutionsalgodones.com/our-team/"
+    procedures:
+      # Own published price list: https://dentalsolutionsalgodones.com/price-list/
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 850
+        priceMax: 850
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 499
+        priceMax: 499
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: VENEER_ZIRCONIA
+        priceMin: 399
+        priceMax: 399
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: ROOT_CANAL
+        priceMin: 250
+        priceMax: 250
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 9900
+        priceMax: 9900
+        currency: USD
+        includes: [nobel_biocare_implants, acrylic_bridge]
+        lastVerified: "2026-07-16"
+      - procedureCode: SINUS_LIFT
+        priceMin: 700
+        priceMax: 700
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: BONE_GRAFT
+        priceMin: 400
+        priceMax: 400
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: TEETH_WHITENING
+        priceMin: 199
+        priceMax: 199
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+
+  - slug: algodones-dental-center
+    name: "Algodones Dental Center"
+    country: MX
+    city: "Los Algodones"
+    address: "C. Álamo 289, 21970 Vicente Guerrero, Baja California, Mexico"
+    languages: [en, es]
+    website: "https://www.algodonesdentalcenter.com/"
+    # No verifiable clinic-level accreditation: site claims "ADA" and "BBB" (both US bodies,
+    # marketing language, no registry link). Left empty — see note on Dental Solutions above.
+    accreditations: []
+    practitioners:
+      - fullName: "Enrique Arturo Jiménez Alvarez"
+        title: "DDS, Laser & Implant Dentistry"
+        licenseCountry: MX
+        yearsExperience: 37
+        profileUrl: "https://www.algodonesdentalcenter.com/about-us/"
+      - fullName: "Hermes Somonte Davila"
+        title: "DDS, Oral Surgery & Implantology"
+        licenseCountry: MX
+        yearsExperience: 28
+        profileUrl: "https://www.algodonesdentalcenter.com/about-us/"
+      - fullName: "Karen Christy Caballero Montes"
+        title: "DDS, Prosthodontics / All-on-4"
+        licenseCountry: MX
+        yearsExperience: 13
+        profileUrl: "https://www.algodonesdentalcenter.com/about-us/"
+    # A price-list page exists (algodonesdentalcenter.com/los-algodones-dental-price-list/) but a
+    # rate limit hit before its figures could be fetched — omitted rather than guessed. Follow up later.
+    procedures: []
+
+  - slug: cosmetic-implant-dentistry-center-los-algodones
+    name: "Cosmetic & Implant Dentistry Center"
+    country: MX
+    city: "Los Algodones"
+    address: "Calle 2 1005, Vicente Guerrero, Los Algodones, B.C. 21970, Mexico"
+    languages: [en, es]
+    yearEstablished: 1972
+    website: "https://www.algodonesdentalimplants.com/"
+    # No verifiable clinic-level accreditation: bios cite ADA/AAID/AACD/ICOI, all US professional
+    # associations, not a Mexican government/professional body. Left empty — see note above.
+    accreditations: []
+    practitioners:
+      - fullName: "Jose Valenzuela Jr."
+        title: "DDS, Owner — Cosmetic & Implant Dentistry"
+        licenseCountry: MX
+        yearsExperience: 24
+        profileUrl: "https://www.algodonesdentalimplants.com/doctors/jose-valenzuela-jr/"
+      - fullName: "Juan Eduardo Arellano"
+        title: "DDS, Implant Dentistry (ICOI member)"
+        licenseCountry: MX
+    # No published price list found on this site.
+    procedures: []
+
+  - slug: the-dental-corner-los-algodones
+    name: "The Dental Corner"
+    country: MX
+    city: "Los Algodones"
+    address: "Calle Tercera y Av. Internacional, Los Algodones, Baja California, Mexico"
+    languages: [en, es]
+    website: "https://dentalcornermx.com/"
+    accreditations:
+      # The only Los Algodones clinic found with any Mexican-national accreditation signal at
+      # all: a COFEPRIS logo displayed on the clinic's own homepage. This is a logo claim, not a
+      # certificate/registration number — weaker evidence than Sani Dental's documented Health
+      # Tourism Stamp, but a real source_url per the guardrail's letter.
+      - body: NATIONAL
+        sourceUrl: "https://dentalcornermx.com/"
+    practitioners:
+      - fullName: "Andros Rodríguez López"
+        title: "DDS, MPH — Implantologist, Clinic Director"
+        licenseCountry: MX
+        yearsExperience: 12
+        profileUrl: "https://www.dentaldepartures.com/dentist/the-dental-corner"
+    # No published price list found.
+    procedures: []
+
+  - slug: sani-dental-group-cancun
+    name: Sani Dental Group
+    country: MX
+    city: "Cancún"
+    address: "Av. Bonampak SM 4A, Lote 4C, Piso 10, KUN Building, Plaza Corporate Medical, 77500 Cancún, Q.R., Mexico"
+    languages: [en, es]
+    website: "https://sanidentalgroup.com/locations/cancun"
+    accreditations:
+      # Same company-wide claim used for the Los Algodones Sani entry: Mexican Council of Medical
+      # Tourism certification + Health Tourism Stamp from the Mexican federal government.
+      - body: NATIONAL
+        sourceUrl: "https://sanidentalgroup.com/about-us/credentials"
+    practitioners:
+      - fullName: "Francisco Antelmo Sanchez Sosme"
+        title: "DDS, Clinical Director — Prosthodontics"
+        licenseCountry: MX
+        profileUrl: "https://sanidentalgroup.com/doctors/francisco-sanchez"
+    procedures:
+      # Own published price list: https://sanidentalgroup.com/price-list
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 1610
+        priceMax: 1610
+        currency: USD
+        includes: [consultation, local_anesthesia, abutment, crown]
+        lastVerified: "2026-07-16"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 8110
+        priceMax: 8110
+        currency: USD
+        includes: [consultation, local_anesthesia, fixed_hybrid_denture]
+        lastVerified: "2026-07-16"
+      - procedureCode: IMPLANT_ALL_ON_6
+        priceMin: 11450
+        priceMax: 13310
+        currency: USD
+        includes: [consultation, local_anesthesia, fixed_denture]
+        lastVerified: "2026-07-16"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 490
+        priceMax: 490
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-16"
+      - procedureCode: CROWN_EMAX
+        priceMin: 395
+        priceMax: 395
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-16"
+      - procedureCode: VENEER_ZIRCONIA
+        priceMin: 490
+        priceMax: 490
+        currency: USD
+        includes: [consultation]
+        lastVerified: "2026-07-16"
+      - procedureCode: ROOT_CANAL
+        priceMin: 340
+        priceMax: 340
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-16"
+      - procedureCode: BONE_GRAFT
+        priceMin: 420
+        priceMax: 420
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-16"
+      - procedureCode: SINUS_LIFT
+        priceMin: 700
+        priceMax: 700
+        currency: USD
+        includes: [consultation, local_anesthesia]
+        lastVerified: "2026-07-16"
+      - procedureCode: TEETH_WHITENING
+        priceMin: 150
+        priceMax: 170
+        currency: USD
+        includes: [consultation]
+        lastVerified: "2026-07-16"
+
+  - slug: cancun-cosmetic-dentistry
+    name: "Cancun Cosmetic Dentistry"
+    country: MX
+    city: "Cancún"
+    address: "Malecón Américas Mall, Av. Bonampak SM6 Local 101A, 77503 Cancún, Q.R., Mexico"
+    languages: [en, es]
+    # No verifiable clinic-level accreditation: the only checkable credential is the lead dentist's
+    # individual ABOI board diplomate status, which doesn't map to this project's clinic-level
+    # accreditation enum (JCI/GHA/AACI/ISO_9001/NATIONAL). Left empty — see note on the Los
+    # Algodones clinics above.
+    accreditations: []
+    practitioners:
+      - fullName: "Germán Arzate"
+        title: "DDS, Prosthodontist — ABOI Diplomate #516"
+        licenseCountry: MX
+        profileUrl: "https://aboi.org/diplomate/516/german-arzate"
+    procedures:
+      # Own published pricing (per-clinic web pages, verified 2026-07-16).
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 880
+        priceMax: 880
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: CROWN_ZIRCONIA
+        priceMin: 990
+        priceMax: 990
+        currency: USD
+        includes: [abutment]
+        lastVerified: "2026-07-16"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 10800
+        priceMax: 10800
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
+      - procedureCode: SINUS_LIFT
+        priceMin: 1300
+        priceMax: 1300
+        currency: USD
+        includes: []
+        lastVerified: "2026-07-16"
