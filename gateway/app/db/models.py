@@ -24,6 +24,12 @@ class User(Base):
     # system yet). Carried into the JWT at login/register — see auth.py.
     tier: Mapped[str] = mapped_column(String, nullable=False, default="free")
     is_admin: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Set once at registration — the client shows a consent screen
+    # ("informational only, not a medical service provider") and the
+    # backend records that the user actually agreed. Never changed after.
+    consent_accepted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -31,6 +37,30 @@ class User(Base):
     # rejected — a single logout invalidates every session/device at once.
     sessions_invalidated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class PasswordResetCode(Base):
+    __tablename__ = "password_reset_codes"
+    __table_args__ = (
+        Index("ix_password_reset_codes_user_id_created_at", "user_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("gateway.users.id", ondelete="CASCADE"), nullable=False
+    )
+    # Only the hash is stored — same reasoning as User.password_hash.
+    code_hash: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Set once the code is successfully used, or once attempt_count hits
+    # settings.password_reset_max_attempts — either way the code is burned.
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -75,7 +105,8 @@ class Report(Base):
         nullable=False,
     )
     report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    trace: Mapped[list[Any]] = mapped_column(JSONB, nullable=False)
+    # Nullable: the free-tier basic_pipeline never populates a trace.
+    trace: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     model: Mapped[str] = mapped_column(String, nullable=False)
     input_tokens: Mapped[int] = mapped_column(nullable=False)
     output_tokens: Mapped[int] = mapped_column(nullable=False)

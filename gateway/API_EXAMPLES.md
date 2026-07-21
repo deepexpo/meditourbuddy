@@ -2,12 +2,14 @@
 
 Base URL (local dev): `http://localhost:8000`
 
-All endpoints except `/health`, `POST /auth/register`, and `POST /auth/login`
-require `Authorization: Bearer <token>`.
+All endpoints except `/health`, `POST /auth/register`, `POST /auth/login`,
+and the two `POST /auth/password-reset/*` endpoints (§3 — the whole point
+of password reset is the user is locked out) require
+`Authorization: Bearer <token>`.
 
 The primary flow for the app is **register → login → `POST /cases`**. One
 screen, one endpoint, both tiers — `POST /cases` branches server-side on the
-account's `tier` and always returns the same `Report` shape (§5), so the
+account's `tier` and always returns the same `Report` shape (§6), so the
 client renders by *field presence*, not by tier:
 
 ```
@@ -16,9 +18,9 @@ POST /cases ── auth ┤
                     └─ tier=premium ─► agent loop         (Claude + tools, several seconds)
 ```
 
-`GET /mcp/tools` / `POST /mcp/call` are **admin/debug only now** (§8b) — the
+`GET /mcp/tools` / `POST /mcp/call` are **admin/debug only now** (§9b) — the
 client should not call them. Use the typed routes instead: `GET /procedures`,
-`GET /clinics/search`, `GET /clinics/{slug}` (§7). They wrap the same
+`GET /clinics/search`, `GET /clinics/{slug}` (§8). They wrap the same
 registry tools but return clean JSON — no `result[0].text` double-parse.
 
 ## 1. Register
@@ -28,9 +30,13 @@ POST /auth/register
 Content-Type: application/json
 ```
 ```json
-{ "email": "patient@example.com", "password": "correct-horse-battery" }
+{ "email": "patient@example.com", "password": "correct-horse-battery", "consent_accepted": true }
 ```
-Password must be at least 10 characters.
+Password must be at least `PASSWORD_MIN_LENGTH` characters (default **8**).
+`consent_accepted` must be **literally `true`** — this is where the
+client's consent screen ("informational only — MediTourBuddy is not a
+medical service provider") gets recorded server-side; `false` or omitting
+the field entirely both fail registration (§1 failure example below).
 
 Success `201` (this also logs you in — no separate login call needed):
 ```json
@@ -47,7 +53,7 @@ Success `201` (this also logs you in — no separate login call needed):
 }
 ```
 New accounts always start on `tier: "free"`. There's no self-serve upgrade
-this phase — `tier`/`is_admin` are flipped by SQL only (see §5c). Use
+this phase — `tier`/`is_admin` are flipped by SQL only (see §6c). Use
 `user.tier` to decide UI up front (e.g. whether to even attempt the upgrade
 sheet); `access_token`'s JWT also carries `tier`/`is_admin` as claims if you
 need them without a round-trip, but the response body is the easier source.
@@ -57,21 +63,37 @@ Failure `409` (email already registered):
 { "detail": "An account with this email already exists", "code": "email_taken" }
 ```
 
-Failure `422` (password too short — see §10, this shape is different from
-the others):
+Failure `422` (password too short, or `consent_accepted` false/missing —
+see §11, this shape is different from the others; real captured examples):
 ```json
 {
   "detail": [
     {
-      "type": "string_too_short",
+      "type": "value_error",
       "loc": ["body", "password"],
-      "msg": "String should have at least 10 characters",
+      "msg": "Value error, Password must be at least 8 characters",
       "input": "short",
-      "ctx": { "min_length": 10 }
+      "ctx": { "error": "Password must be at least 8 characters" }
     }
   ]
 }
 ```
+```json
+{
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": ["body", "consent_accepted"],
+      "msg": "Value error, You must accept the consent terms to register.",
+      "input": false,
+      "ctx": { "error": "You must accept the consent terms to register." }
+    }
+  ]
+}
+```
+Both are `type: "value_error"` (a custom validator), not `string_too_short`
+— parse `msg`/`loc` rather than assuming a specific `type` or `ctx` shape
+per field.
 
 ## 2. Login
 
@@ -101,7 +123,60 @@ old tier until it expires or the user logs out/in again. If you build an
 "upgrade requested" flow, tell the user to log out and back in to pick up
 the change — don't expect it to take effect mid-session.
 
-## 3. Logout
+## 3. Password reset
+
+Two calls, no auth needed on either (the whole point is the user is locked
+out). A 6-digit code emailed to them, entered in-app alongside the new
+password — no deep-linking/universal-links setup required.
+
+### 3a. `POST /auth/password-reset/request`
+
+```
+POST /auth/password-reset/request
+Content-Type: application/json
+```
+```json
+{ "email": "patient@example.com" }
+```
+Success `204` (no body) — **always**, whether or not that email is
+registered. Same anti-enumeration principle as login's identical
+wrong-password-vs-unknown-email error (§2): don't build UI that reveals
+"no account with that email" here, just show "if that email is registered,
+a code is on its way."
+
+The code expires in `PASSWORD_RESET_CODE_TTL_MINUTES` (default 15). Only
+the most recently requested code is ever valid — requesting again
+invalidates any earlier one. Requesting more than
+`PASSWORD_RESET_REQUESTS_PER_HOUR` (default 5) times in an hour for the
+same account is silently rate-limited (still `204`, no new code/email sent)
+— don't build a "resend" button with no cooldown.
+
+### 3b. `POST /auth/password-reset/confirm`
+
+```
+POST /auth/password-reset/confirm
+Content-Type: application/json
+```
+```json
+{ "email": "patient@example.com", "code": "483920", "new_password": "correct-horse-battery" }
+```
+`new_password` follows the same length rule as registration (§1). Success
+`204` (no body) — the password is changed and, importantly, **every
+existing session is invalidated** (same mechanism as `POST /auth/logout`,
+§4), including the session on the device making this call. Send the user
+straight to the login screen, not back into the app.
+
+Failure `400` — one generic error for every failure reason (wrong code,
+expired code, too many wrong attempts, no code requested) so a client can't
+learn which:
+```json
+{ "detail": "Invalid or expired reset code", "code": "invalid_reset_code" }
+```
+A code is permanently burned (even the right code stops working) after
+`PASSWORD_RESET_MAX_ATTEMPTS` wrong guesses (default 5) — at that point the
+user needs to call §3a again for a fresh one.
+
+## 4. Logout
 
 ```
 POST /auth/logout
@@ -116,7 +191,7 @@ both out. After this call, delete the token from Keychain; it will now get
 a `401` on any authenticated request even though it hasn't expired yet.
 Logging in again issues a normal new working token.
 
-## 4. Current user
+## 5. Current user
 
 ```
 GET /auth/me
@@ -144,7 +219,7 @@ Success `204` (no body). This **hard-deletes** the account and cascades to
 all of that user's cases and reports — irreversible, so confirm in the UI
 before calling it. The token used to delete stops working immediately.
 
-## 5. Create a case
+## 6. Create a case
 
 ```
 POST /cases
@@ -174,7 +249,7 @@ account's `tier` decides what happens server-side, not the request.
 
 Both share a hard 60s server-side timeout (`CASE_TIMEOUT_SECONDS`).
 
-### 5a. Success `201` — the unified `Report` shape
+### 6a. Success `201` — the unified `Report` shape
 
 Every field below is present on **both** tiers; the difference is which
 ones are populated. Render each section by whether its field is non-null,
@@ -276,7 +351,7 @@ Field-by-field:
 | Field | Free | Premium | Notes |
 |---|---|---|---|
 | `report_tier` | `"basic"` | `"full"` | The only field you'd branch on, and only for analytics/labeling — not for rendering. |
-| `locked_features` | array of feature keys | `null` | Render each key's card in its natural position as a locked/blurred teaser; tap → upgrade sheet. Log the tap (§9a). Data-driven: don't hardcode which features are locked. |
+| `locked_features` | array of feature keys | `null` | Render each key's card in its natural position as a locked/blurred teaser; tap → upgrade sheet. Log the tap (§10a). Data-driven: don't hardcode which features are locked. |
 | `trace` | `null` | array | Which tools ran, in order — demo/debug value, not for end users. |
 | `options[].trip_notes` / `trip_plan` / `all_in_cad` | always `null` | populated (`trip_plan`/`all_in_cad` are `null` until travel-mcp lands even on premium) | Render the section only if non-null. |
 | everything else (`case_summary`, `procedure`, `options[].clinic`/`accreditations`/`price_usd`/`savings_vs_quote_pct`, `next_steps`, `disclaimer`) | populated | populated | Same shape both tiers. |
@@ -285,7 +360,7 @@ Field-by-field:
 than stretch a bad match, so render a real "no matches found" empty state,
 not an error.
 
-### 5b. Failure `422` — free tier, description didn't match a procedure
+### 6b. Failure `422` — free tier, description didn't match a procedure
 
 ```json
 {
@@ -305,7 +380,7 @@ keyword matcher resolves it deterministically — there's no separate
 `procedure_code` field on the request, the matcher only reads `description`.
 No case row is created and no quota is consumed for this response.
 
-### 5c. Failure `429` — quota exceeded
+### 6c. Failure `429` — quota exceeded
 
 ```json
 { "detail": "Quota exceeded for your tier", "code": "QUOTA_EXCEEDED" }
@@ -316,12 +391,12 @@ terminal state for the request and prompt to retry later (free) or contact
 you about premium limits (premium). Tiers are flipped by SQL only right now
 (no self-serve upgrade), so a premium quota bump is a manual op on your end.
 
-### 5d. Failure `504` (agent exceeded the timeout)
+### 6d. Failure `504` (agent exceeded the timeout)
 ```json
 { "detail": "Agent run timed out", "code": "case_timeout" }
 ```
 
-### 5e. Failure `502` (tool/model/validation failure — real captured example,
+### 6e. Failure `502` (tool/model/validation failure — real captured example,
 this one from a misconfigured API key)
 ```json
 { "detail": "Agent failed to produce a report", "code": "case_failed" }
@@ -330,7 +405,7 @@ On either 504 or 502, the case itself was still persisted with
 `"status": "failed"` and a `failure_reason` string — `GET /cases/{id}`
 still works and shows why it failed, it just has no `report`.
 
-## 6. List / get / delete cases
+## 7. List / get / delete cases
 
 ```
 GET /cases
@@ -375,13 +450,13 @@ Authorization: Bearer <token>
 ```
 Success `204` (no body). Same 404 behavior as above for a case you don't own.
 
-## 7. Browse clinics/procedures directly (search, clinic profile screens)
+## 8. Browse clinics/procedures directly (search, clinic profile screens)
 
 Thin typed wrappers around the registry — use these instead of `/mcp/call`
-(now admin-only, §8) for any client-facing browse/search screen. Clean JSON
+(now admin-only, §9) for any client-facing browse/search screen. Clean JSON
 in, clean JSON out; no `result[0].text` double-parse.
 
-### 7a. `GET /procedures`
+### 8a. `GET /procedures`
 
 ```
 GET /procedures?category=implant
@@ -400,7 +475,7 @@ Success `200`:
 Server-cached for up to 1h — don't poll this aggressively, it won't change
 faster than that anyway.
 
-### 7b. `GET /clinics/search`
+### 8b. `GET /clinics/search`
 
 ```
 GET /clinics/search?procedure_code=IMPLANT_ALL_ON_4&country=TR&max_budget_usd=8000
@@ -429,9 +504,9 @@ Success `200`:
 }
 ```
 Note `accreditations` here is just body names (`["JCI"]`) — no `source_url`.
-For the full evidence chain, follow up with `GET /clinics/{slug}` (§7c).
+For the full evidence chain, follow up with `GET /clinics/{slug}` (§8c).
 
-### 7c. `GET /clinics/{slug}`
+### 8c. `GET /clinics/{slug}`
 
 ```
 GET /clinics/vera-smile-istanbul
@@ -473,16 +548,16 @@ This is where `source_url`/`valid_until` for each accreditation live — the
 `POST /cases` report already inlines this per-option, so you only need this
 route standalone for a dedicated clinic-profile screen.
 
-## 8. Admin/debug: raw MCP tool access
+## 9. Admin/debug: raw MCP tool access
 
 `/mcp/tools` and `/mcp/call` now require `is_admin: true` on the account
-(§4) — any other account gets `403 {"detail": "Admin access required",
+(§5) — any other account gets `403 {"detail": "Admin access required",
 "code": "forbidden"}`. **The client app should not call these** — use the
-typed routes in §7 instead. Kept here for an internal admin/debug screen or
+typed routes in §8 instead. Kept here for an internal admin/debug screen or
 manual testing against tools that don't have a typed wrapper yet
 (`compare_procedures`, `verify_accreditation`).
 
-### 8a. `GET /mcp/tools`
+### 9a. `GET /mcp/tools`
 
 ```
 GET /mcp/tools
@@ -504,7 +579,7 @@ Success `200` (trimmed):
 Use `inputSchema`/`outputSchema` on each tool to drive form validation and
 rendering in an admin screen — they're full JSON Schema.
 
-### 8b. `POST /mcp/call`
+### 9b. `POST /mcp/call`
 
 ```
 POST /mcp/call
@@ -528,7 +603,7 @@ Response shape is always the same envelope — MCP's content array:
 app must `JSON.parse()` (or equivalent) it to get the actual data.
 
 `search_clinics`, `get_clinic_profile`, and `list_procedures` have typed
-wrappers now (§7) — prefer those. The two tools below don't yet, so this is
+wrappers now (§8) — prefer those. The two tools below don't yet, so this is
 still the only way to reach them:
 
 ### Example: compare_procedures
@@ -570,9 +645,9 @@ Request:
 }
 ```
 
-## 9. Analytics
+## 10. Analytics
 
-### 9a. `POST /analytics/locked-card-tap`
+### 10a. `POST /analytics/locked-card-tap`
 
 ```
 POST /analytics/locked-card-tap
@@ -582,12 +657,12 @@ Content-Type: application/json
 ```json
 { "feature": "trip_plan" }
 ```
-Fire this whenever a free-tier user taps a locked card (§5a) — `feature`
+Fire this whenever a free-tier user taps a locked card (§6a) — `feature`
 should be one of the strings from that report's `locked_features` array.
 Success `204` (no body). This is server-side signal for "which lock gets
 tapped most = what people would pay for" — no response to act on client-side.
 
-## 10. Error handling — three different shapes
+## 11. Error handling — three different shapes
 
 **1. Domain errors** (auth/cases business logic) — a flat object with both
 `detail` (human-readable) and `code` (machine-readable, stable, safe to
@@ -599,12 +674,13 @@ switch on):
 |---|---|---|
 | `email_taken` | 409 | Register with an email already in use |
 | `invalid_credentials` | 401 | Login with wrong email or unknown email |
-| `PROCEDURE_UNCLEAR` | 422 | Free tier: `description` didn't match a known procedure — has a `choices` array (§5b) |
-| `QUOTA_EXCEEDED` | 429 | Free: 10 cases/day. Premium: 10 agent runs/month (§5c) |
+| `invalid_reset_code` | 400 | Wrong/expired/already-used/too-many-attempts reset code (§3b) |
+| `PROCEDURE_UNCLEAR` | 422 | Free tier: `description` didn't match a known procedure — has a `choices` array (§6b) |
+| `QUOTA_EXCEEDED` | 429 | Free: 10 cases/day. Premium: 10 agent runs/month (§6c) |
 | `case_not_found` | 404 | Case doesn't exist, or belongs to another user |
 | `case_timeout` | 504 | Agent run exceeded the server-side timeout |
 | `case_failed` | 502 | Agent/tool/model failure producing a report |
-| `forbidden` | 403 | `/mcp/tools` or `/mcp/call` called by a non-admin account (§8) |
+| `forbidden` | 403 | `/mcp/tools` or `/mcp/call` called by a non-admin account (§9) |
 | `http_error` | varies | Generic fallback — e.g. missing/expired/invalid/logged-out Bearer token (401) |
 
 **2. Request validation errors** (malformed JSON body — e.g. missing
@@ -619,7 +695,7 @@ required field, password too short) — FastAPI's own shape, `detail` is an
 ```
 Check whether `detail` is a string or an array to tell these two apart.
 
-**3. Tool-level errors** (only from `POST /mcp/call`, §8b — bad tool name or
+**3. Tool-level errors** (only from `POST /mcp/call`, §9b — bad tool name or
 bad arguments per the tool's own validation) come back as `200 OK` with the
 error *inside* the content array:
 ```json
@@ -641,8 +717,15 @@ either produces a real report or a `case_failed`/502.
 # Register (or use /auth/login on subsequent runs) — new accounts are tier=free
 TOKEN=$(curl -s -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"patient@example.com","password":"correct-horse-battery"}' \
+  -d '{"email":"patient@example.com","password":"correct-horse-battery","consent_accepted":true}' \
   | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+# Forgot password — always 204 (check the inbox for the 6-digit code)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/password-reset/request \
+  -H "Content-Type: application/json" -d '{"email":"patient@example.com"}'
+curl -s -X POST http://localhost:8000/auth/password-reset/confirm \
+  -H "Content-Type: application/json" \
+  -d '{"email":"patient@example.com","code":"483920","new_password":"new-correct-horse-battery"}'
 
 # Run a case — same call for both tiers, response's report_tier tells you which ran
 curl -s -X POST http://localhost:8000/cases \

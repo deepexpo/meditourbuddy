@@ -8,6 +8,17 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-to-a-long-random-string"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
+    password_min_length: int = 8
+
+    # Password reset (email delivery via Resend)
+    resend_api_key: str = ""
+    # Resend's shared test domain — works immediately with no domain
+    # verification. Swap for a verified custom domain before real users
+    # depend on this.
+    resend_from_email: str = "MediTourBuddy <onboarding@resend.dev>"
+    password_reset_code_ttl_minutes: int = 15
+    password_reset_max_attempts: int = 5       # per code, before it's burned
+    password_reset_requests_per_hour: int = 5  # per account, rate limit
 
     # MCP server (stdio transport)
     mcp_server_command: str = "node"
