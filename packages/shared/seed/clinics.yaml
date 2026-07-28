@@ -1,7 +1,8 @@
 # Real, researched clinics. First 3 from build order step 2 (pilot); remaining from step 5
-# (finishing the seed data). Currently 14 of the spec's target 15 (7 Istanbul, 7 Mexico) — one
-# Istanbul clinic short; every remaining real candidate checked either duplicated an existing
-# entry or failed the "no source, no row" accreditation bar. Sources are cited inline.
+# (finishing the seed data). Now at the spec's target 15 (8 Istanbul, 7 Mexico) — the 15th
+# (esnan-dental-skyland-istanbul) cleared the "no source, no row" accreditation bar after
+# several other Istanbul candidates didn't (see git history for what was ruled out and why).
+# Sources are cited inline.
 clinics:
   - slug: acibadem-maslak-istanbul
     name: Acıbadem Maslak Hospital
@@ -542,3 +543,48 @@ clinics:
         currency: USD
         includes: []
         lastVerified: "2026-07-16"
+
+  - slug: esnan-dental-skyland-istanbul
+    name: "Esnan Dental Clinics – Skyland"
+    country: TR
+    city: Istanbul
+    address: "Ayazağa Mahallesi Azerbaycan Caddesi Skyland İstanbul D Blok 4 No'lu Giriş No:333 Atrium B - Kat3, 34415 Sarıyer/İstanbul, Türkiye"
+    languages: [en, tr, fr, de, ru, ar]
+    website: "https://www.esnandentalclinics.com/"
+    accreditations:
+      # First (and per their own claim, only) dental clinic in Turkey accredited under
+      # JCI's Ambulatory Care Program — corroborated independently via their official
+      # LinkedIn accreditation announcement, not just this certificates page alone.
+      - body: JCI
+        sourceUrl: "https://www.esnandentalclinics.com/certificates/"
+    practitioners:
+      - fullName: "Orhan Geçör"
+        title: "Oral and Maxillofacial Surgery Specialist"
+        licenseCountry: TR
+        profileUrl: "https://www.esnandentalclinics.com/our-team/"
+    procedures:
+      # Own published price list: https://www.esnandentalclinics.com/implant-dental-treatments/dental-implants-turkey-cost/
+      - procedureCode: IMPLANT_SINGLE
+        priceMin: 500
+        priceMax: 750
+        currency: USD
+        includes: [consultation, cbct_scan, crown]
+        lastVerified: "2026-07-28"
+      - procedureCode: IMPLANT_ALL_ON_4
+        priceMin: 9000
+        priceMax: 12000
+        currency: USD
+        includes: [consultation, cbct_scan, crown]
+        lastVerified: "2026-07-28"
+      - procedureCode: IMPLANT_ALL_ON_6
+        priceMin: 11000
+        priceMax: 14000
+        currency: USD
+        includes: [consultation, cbct_scan, crown]
+        lastVerified: "2026-07-28"
+      - procedureCode: FULL_MOUTH_RECON
+        priceMin: 20000
+        priceMax: 22000
+        currency: USD
+        includes: [consultation, cbct_scan, crown]
+        lastVerified: "2026-07-28"

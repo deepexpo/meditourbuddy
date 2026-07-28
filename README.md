@@ -85,11 +85,9 @@ days old.
 
 ## Data
 
-15 target clinics (8 Istanbul, 7 Mexico per the original plan); **14 are currently seeded** (7
-Istanbul, 5 Los Algodones, 2 Cancún) — every entry is a real clinic, individually researched, with
-sources cited inline in [`packages/shared/seed/clinics.yaml`](packages/shared/seed/clinics.yaml).
-One Istanbul slot remains open: every further real candidate either duplicated an existing entry
-or failed the "no source, no row" bar during research.
+**15 clinics seeded** (8 Istanbul, 5 Los Algodones, 2 Cancún), hitting the original plan's target
+(8 Istanbul, 7 Mexico) — every entry is a real clinic, individually researched, with sources cited
+inline in [`packages/shared/seed/clinics.yaml`](packages/shared/seed/clinics.yaml).
 
 ## Running it locally
 
