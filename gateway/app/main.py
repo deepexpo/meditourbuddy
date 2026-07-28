@@ -9,7 +9,7 @@ from app.config import settings
 from app.db.session import AsyncSessionLocal, engine
 from app.errors import AppError
 from app.mcp_client import mcp_manager
-from app.routers import analytics, auth, cases, clinics, mcp
+from app.routers import admin, analytics, auth, cases, clinics, mcp
 
 
 @asynccontextmanager
@@ -52,6 +52,7 @@ app.include_router(cases.router)
 app.include_router(mcp.router)
 app.include_router(clinics.router)
 app.include_router(analytics.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

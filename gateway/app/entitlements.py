@@ -34,7 +34,9 @@ def _quota_window_start(tier: str, now: datetime) -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-async def check_case_quota(db: AsyncSession, user_id: uuid.UUID, tier: str) -> None:
+async def check_case_quota(db: AsyncSession, user_id: uuid.UUID, tier: str, role: str) -> None:
+    if role == "admin":
+        return
     window_start = _quota_window_start(tier, datetime.now(timezone.utc))
     count = await db.scalar(
         select(func.count())
@@ -45,7 +47,9 @@ async def check_case_quota(db: AsyncSession, user_id: uuid.UUID, tier: str) -> N
         raise AppError(429, "Quota exceeded for your tier", "QUOTA_EXCEEDED")
 
 
-def history_limit(tier: str) -> int | None:
+def history_limit(tier: str, role: str) -> int | None:
+    if role == "admin":
+        return None
     return FREE_HISTORY_LIMIT if tier == "free" else None
 
 

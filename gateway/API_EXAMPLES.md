@@ -47,16 +47,19 @@ Success `201` (this also logs you in — no separate login call needed):
     "id": "ead64a93-80d5-48e9-badf-fa3cdc8291d8",
     "email": "patient@example.com",
     "tier": "free",
-    "is_admin": false,
+    "role": "user",
     "created_at": "2026-07-19T06:05:49.433862Z"
   }
 }
 ```
-New accounts always start on `tier: "free"`. There's no self-serve upgrade
-this phase — `tier`/`is_admin` are flipped by SQL only (see §6c). Use
-`user.tier` to decide UI up front (e.g. whether to even attempt the upgrade
-sheet); `access_token`'s JWT also carries `tier`/`is_admin` as claims if you
-need them without a round-trip, but the response body is the easier source.
+New accounts always start on `tier: "free"`, `role: "user"`. `role` is
+`"user"` | `"admin"` | `"support"` — `"support"` is reserved for future use
+(no endpoint treats it differently from `"user"` yet). There's no
+self-serve tier upgrade or role grant this phase — both are flipped by SQL
+only (see §6c). Use `user.tier`/`user.role` to decide UI up front (e.g.
+whether to even attempt the upgrade sheet, or show an admin-only screen);
+`access_token`'s JWT also carries `tier`/`role` as claims if you need them
+without a round-trip, but the response body is the easier source.
 
 Failure `409` (email already registered):
 ```json
@@ -64,7 +67,7 @@ Failure `409` (email already registered):
 ```
 
 Failure `422` (password too short, or `consent_accepted` false/missing —
-see §11, this shape is different from the others; real captured examples):
+see §12, this shape is different from the others; real captured examples):
 ```json
 {
   "detail": [
@@ -116,10 +119,10 @@ error either way, so you can't probe which emails are registered):
 Token expires after `JWT_EXPIRE_MINUTES` (default 60 min) — re-login when
 your app gets a 401.
 
-**`tier`/`is_admin` are snapshotted into the token at login/register, not
+**`tier`/`role` are snapshotted into the token at login/register, not
 re-read per request.** If an account is upgraded to premium (or granted
 admin) via SQL while a token is still live, that token keeps behaving as the
-old tier until it expires or the user logs out/in again. If you build an
+old tier/role until it expires or the user logs out/in again. If you build an
 "upgrade requested" flow, tell the user to log out and back in to pick up
 the change — don't expect it to take effect mid-session.
 
@@ -203,11 +206,11 @@ Success `200`:
   "id": "ead64a93-80d5-48e9-badf-fa3cdc8291d8",
   "email": "patient@example.com",
   "tier": "free",
-  "is_admin": false,
+  "role": "user",
   "created_at": "2026-07-19T06:05:49.433862Z"
 }
 ```
-This reads `tier`/`is_admin` live from the DB (unlike the JWT claims, which
+This reads `tier`/`role` live from the DB (unlike the JWT claims, which
 are frozen at login) — useful for detecting "you were upgraded, please
 re-login" without waiting for a 401/403 to surface it.
 
@@ -246,6 +249,14 @@ account's `tier` decides what happens server-side, not the request.
 - **Premium**: a real multi-round Claude tool-use loop against the live
   clinic registry. Takes several seconds — show a loading state, not a
   spinner-blocks-everything UI.
+- **Admin** (`role: "admin"`): always gets the premium engine and never
+  hits the quota, regardless of their own account's `tier`. Send
+  `"preview_tier": "free"` or `"preview_tier": "premium"` (admin-only —
+  silently ignored for everyone else) to preview either report shape on
+  demand for a stakeholder demo, without touching the admin's own `tier`
+  column. Previewing `"free"` runs the real `basic_pipeline`, complete with
+  `locked_features` populated — it's not a mocked/fake version of the free
+  report, it's the actual one.
 
 Both share a hard 60s server-side timeout (`CASE_TIMEOUT_SECONDS`).
 
@@ -351,7 +362,7 @@ Field-by-field:
 | Field | Free | Premium | Notes |
 |---|---|---|---|
 | `report_tier` | `"basic"` | `"full"` | The only field you'd branch on, and only for analytics/labeling — not for rendering. |
-| `locked_features` | array of feature keys | `null` | Render each key's card in its natural position as a locked/blurred teaser; tap → upgrade sheet. Log the tap (§10a). Data-driven: don't hardcode which features are locked. |
+| `locked_features` | array of feature keys | `null` | Render each key's card in its natural position as a locked/blurred teaser; tap → upgrade sheet. Log the tap (§11a). Data-driven: don't hardcode which features are locked. |
 | `trace` | `null` | array | Which tools ran, in order — demo/debug value, not for end users. |
 | `options[].trip_notes` / `trip_plan` / `all_in_cad` | always `null` | populated (`trip_plan`/`all_in_cad` are `null` until travel-mcp lands even on premium) | Render the section only if non-null. |
 | everything else (`case_summary`, `procedure`, `options[].clinic`/`accreditations`/`price_usd`/`savings_vs_quote_pct`, `next_steps`, `disclaimer`) | populated | populated | Same shape both tiers. |
@@ -385,11 +396,13 @@ No case row is created and no quota is consumed for this response.
 ```json
 { "detail": "Quota exceeded for your tier", "code": "QUOTA_EXCEEDED" }
 ```
-Free: 10 cases/day. Premium: 10 agent runs/month. No case row is created.
-There's no client-visible "quota remaining" field yet — treat this as a
-terminal state for the request and prompt to retry later (free) or contact
-you about premium limits (premium). Tiers are flipped by SQL only right now
-(no self-serve upgrade), so a premium quota bump is a manual op on your end.
+Free: 10 cases/day. Premium: 10 agent runs/month. `role: "admin"` accounts
+never hit this, regardless of their own tier or usage. No case row is
+created. There's no client-visible "quota remaining" field yet — treat this
+as a terminal state for the request and prompt to retry later (free) or
+contact you about premium limits (premium). Tiers/roles are flipped by SQL
+only right now (no self-serve upgrade), so a premium quota bump is a manual
+op on your end.
 
 ### 6d. Failure `504` (agent exceeded the timeout)
 ```json
@@ -415,7 +428,8 @@ Success `200` — the caller's own cases, newest first, **without** the full
 report (use `GET /cases/{id}` for that — keeps the list screen light).
 **Free tier only ever gets the most recent 1 case back here**, even if more
 exist — `GET /cases/{id}` still works for any of the caller's own older
-cases by ID, this only limits the list view. Premium is unlimited. If you
+cases by ID, this only limits the list view. Premium is unlimited, and so
+is `role: "admin"` regardless of their own tier. If you
 want a "see all history" locked card in the history screen, that's a
 client-side decision (there's no `total_count` in the response to compare
 against — track it another way, or just always show the teaser for free
@@ -550,12 +564,12 @@ route standalone for a dedicated clinic-profile screen.
 
 ## 9. Admin/debug: raw MCP tool access
 
-`/mcp/tools` and `/mcp/call` now require `is_admin: true` on the account
-(§5) — any other account gets `403 {"detail": "Admin access required",
-"code": "forbidden"}`. **The client app should not call these** — use the
-typed routes in §8 instead. Kept here for an internal admin/debug screen or
-manual testing against tools that don't have a typed wrapper yet
-(`compare_procedures`, `verify_accreditation`).
+`/mcp/tools` and `/mcp/call` now require `role: "admin"` on the account
+(§5) — any other account (including `"support"`) gets `403 {"detail":
+"Admin access required", "code": "forbidden"}`. **The client app should not
+call these** — use the typed routes in §8 instead. Kept here for an
+internal admin/debug screen or manual testing against tools that don't have
+a typed wrapper yet (`compare_procedures`, `verify_accreditation`).
 
 ### 9a. `GET /mcp/tools`
 
@@ -645,9 +659,68 @@ Request:
 }
 ```
 
-## 10. Analytics
+## 10. Admin: users and case history
 
-### 10a. `POST /analytics/locked-card-tap`
+All four routes require `role: "admin"` on the caller — same gating as §9,
+`403 {"detail": "Admin access required", "code": "forbidden"}` for anyone
+else. Not for the client app's main flow — this is for an internal
+admin/support screen.
+
+### 10a. `GET /admin/users`
+
+```
+GET /admin/users
+Authorization: Bearer <token>   (admin account)
+```
+Success `200` — every registered user, newest first, same shape as `GET
+/auth/me` (§5):
+```json
+[
+  { "id": "ead64a93-80d5-48e9-badf-fa3cdc8291d8", "email": "patient@example.com", "tier": "free", "role": "user", "created_at": "2026-07-19T06:05:49.433862Z" }
+]
+```
+No pagination yet — fine at this phase's user count, revisit before it
+isn't.
+
+### 10b. `GET /admin/users/{user_id}`
+
+```
+GET /admin/users/ead64a93-80d5-48e9-badf-fa3cdc8291d8
+Authorization: Bearer <token>   (admin account)
+```
+Success `200`: single user, same shape as one entry of §10a. Failure `404`:
+```json
+{ "detail": "User not found", "code": "user_not_found" }
+```
+
+### 10c. `GET /admin/users/{user_id}/cases`
+
+```
+GET /admin/users/ead64a93-80d5-48e9-badf-fa3cdc8291d8/cases
+Authorization: Bearer <token>   (admin account)
+```
+Success `200`: that user's **full** case history, same shape as `GET
+/cases` (§7) — but unlike calling `/cases` as that user, there's no
+free-tier 1-case cap here. An empty array just means they have no cases;
+there's no 404 for "user has zero cases" (only §10b/§10d 404 on a missing
+`user_id`/`case_id`).
+
+### 10d. `GET /admin/users/{user_id}/cases/{case_id}`
+
+```
+GET /admin/users/ead64a93-80d5-48e9-badf-fa3cdc8291d8/cases/6a4b9fb5-e7b3-4dda-be71-6ddc67823225
+Authorization: Bearer <token>   (admin account)
+```
+Success `200`: full `CaseDetail`, same shape as `GET /cases/{id}` (§7) —
+complete `report` included. Failure `404` (case doesn't exist, or exists
+but doesn't belong to that `user_id`):
+```json
+{ "detail": "Case not found", "code": "case_not_found" }
+```
+
+## 11. Analytics
+
+### 11a. `POST /analytics/locked-card-tap`
 
 ```
 POST /analytics/locked-card-tap
@@ -662,7 +735,7 @@ should be one of the strings from that report's `locked_features` array.
 Success `204` (no body). This is server-side signal for "which lock gets
 tapped most = what people would pay for" — no response to act on client-side.
 
-## 11. Error handling — three different shapes
+## 12. Error handling — three different shapes
 
 **1. Domain errors** (auth/cases business logic) — a flat object with both
 `detail` (human-readable) and `code` (machine-readable, stable, safe to
@@ -678,9 +751,10 @@ switch on):
 | `PROCEDURE_UNCLEAR` | 422 | Free tier: `description` didn't match a known procedure — has a `choices` array (§6b) |
 | `QUOTA_EXCEEDED` | 429 | Free: 10 cases/day. Premium: 10 agent runs/month (§6c) |
 | `case_not_found` | 404 | Case doesn't exist, or belongs to another user |
+| `user_not_found` | 404 | `GET /admin/users/{user_id}` — no such user (§10b) |
 | `case_timeout` | 504 | Agent run exceeded the server-side timeout |
 | `case_failed` | 502 | Agent/tool/model failure producing a report |
-| `forbidden` | 403 | `/mcp/tools` or `/mcp/call` called by a non-admin account (§9) |
+| `forbidden` | 403 | `/mcp/*` or `/admin/*` called by a non-admin account (§9, §10) |
 | `http_error` | varies | Generic fallback — e.g. missing/expired/invalid/logged-out Bearer token (401) |
 
 **2. Request validation errors** (malformed JSON body — e.g. missing
@@ -750,6 +824,16 @@ curl -s http://localhost:8000/mcp/tools -H "Authorization: Bearer $TOKEN"
 curl -s -X POST http://localhost:8000/mcp/call \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"compare_procedures","arguments":{"procedure_code":"IMPLANT_SINGLE","canadian_quote_cad":4500}}'
+
+# (admin only) preview the free-tier report shape for a stakeholder demo —
+# works even though this admin's own tier is premium
+curl -s -X POST http://localhost:8000/cases \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"description":"Need a single dental implant, exploring options abroad.","preview_tier":"free"}'
+
+# (admin only) browse other users and their case history — 403 for everyone else
+curl -s http://localhost:8000/admin/users -H "Authorization: Bearer $ADMIN_TOKEN"
+curl -s http://localhost:8000/admin/users/<user_id>/cases -H "Authorization: Bearer $ADMIN_TOKEN"
 
 # Logout — invalidates $TOKEN (and every other session on this account)
 curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/auth/logout \

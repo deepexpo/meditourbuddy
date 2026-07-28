@@ -16,6 +16,7 @@ from app.errors import AppError
 from app.schemas.cases import CaseDetail, CaseIntake, CaseListItem
 from app.schemas.report import Report
 from app.services import basic_pipeline, procedures_cache
+from app.services.case_queries import fetch_case_detail, fetch_cases_for_user
 from app.services.orchestrator import MODEL, run_case
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -32,13 +33,20 @@ async def create_case(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await entitlements.check_case_quota(db, current_user.id, current_user.tier)
+    await entitlements.check_case_quota(db, current_user.id, current_user.tier, current_user.role)
 
-    # Free tier resolves procedure_code up front — an unclear description
-    # never creates a Case row or consumes quota. Premium's agent infers
-    # procedure_code itself.
+    # Admin always gets the premium engine, regardless of their own tier —
+    # except when previewing a specific tier for a stakeholder demo.
+    # preview_tier from a non-admin is silently ignored.
+    effective_tier = current_user.tier
+    if current_user.role == "admin":
+        effective_tier = intake.preview_tier or "premium"
+
+    # Free (effective) tier resolves procedure_code up front — an unclear
+    # description never creates a Case row or consumes quota. Premium's
+    # agent infers procedure_code itself.
     procedure_code: str | None = None
-    if current_user.tier == "free":
+    if effective_tier == "free":
         procedure_code = basic_pipeline.match_procedure_code(intake.description)
         if procedure_code is None:
             logger.info("procedure_unclear tier=free description_len=%d", len(intake.description))
@@ -56,7 +64,7 @@ async def create_case(
 
     started = asyncio.get_event_loop().time()
     try:
-        if current_user.tier == "free":
+        if effective_tier == "free":
             report: Report = await asyncio.wait_for(
                 basic_pipeline.run_basic_case(intake, procedure_code), timeout=settings.case_timeout_seconds
             )
@@ -97,8 +105,8 @@ async def create_case(
     await db.refresh(case)
     elapsed_ms = int((asyncio.get_event_loop().time() - started) * 1000)
     logger.info(
-        "case %s complete in %dms tier=%s (%d/%d tokens)",
-        case.id, elapsed_ms, current_user.tier, input_tokens, output_tokens,
+        "case %s complete in %dms tier=%s account_tier=%s (%d/%d tokens)",
+        case.id, elapsed_ms, effective_tier, current_user.tier, input_tokens, output_tokens,
     )
 
     return CaseDetail(
@@ -117,16 +125,8 @@ async def list_cases(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = (
-        select(Case)
-        .where(Case.user_id == current_user.id)
-        .order_by(Case.created_at.desc())
-    )
-    limit = entitlements.history_limit(current_user.tier)
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    cases = await db.scalars(stmt)
-    return list(cases)
+    limit = entitlements.history_limit(current_user.tier, current_user.role)
+    return await fetch_cases_for_user(db, current_user.id, limit=limit)
 
 
 @router.get("/{case_id}", response_model=CaseDetail)
@@ -135,22 +135,10 @@ async def get_case(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    case = await db.scalar(
-        select(Case).where(Case.id == case_id, Case.user_id == current_user.id)
-    )
-    if case is None:
+    detail = await fetch_case_detail(db, current_user.id, case_id)
+    if detail is None:
         raise AppError(404, "Case not found", "case_not_found")
-
-    report_row = await db.scalar(select(ReportRow).where(ReportRow.case_id == case.id))
-    return CaseDetail(
-        id=case.id,
-        status=case.status,
-        created_at=case.created_at,
-        completed_at=case.completed_at,
-        failure_reason=case.failure_reason,
-        intake=case.intake,
-        report=report_row.report if report_row else None,
-    )
+    return detail
 
 
 @router.delete("/{case_id}", status_code=204)

@@ -13,6 +13,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("tier in ('free', 'premium')", name="ck_users_tier"),
+        CheckConstraint("role in ('user', 'admin', 'support')", name="ck_users_role"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -23,7 +24,10 @@ class User(Base):
     # Default tier for new signups; upgraded manually via SQL (no payment
     # system yet). Carried into the JWT at login/register — see auth.py.
     tier: Mapped[str] = mapped_column(String, nullable=False, default="free")
-    is_admin: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Independent of tier — an admin still has their own free/premium tier.
+    # 'support' is reserved for future use: stored, valid, but no endpoint
+    # treats it differently from 'user' yet.
+    role: Mapped[str] = mapped_column(String, nullable=False, default="user")
     # Set once at registration — the client shows a consent screen
     # ("informational only, not a medical service provider") and the
     # backend records that the user actually agreed. Never changed after.

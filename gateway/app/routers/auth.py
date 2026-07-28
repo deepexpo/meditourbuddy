@@ -43,7 +43,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         raise AppError(409, "An account with this email already exists", "email_taken")
     await db.refresh(user)
 
-    token = create_access_token(user.id, user.tier, user.is_admin)
+    token = create_access_token(user.id, user.tier, user.role)
     return AuthResponse(access_token=token, user=UserOut.model_validate(user, from_attributes=True))
 
 
@@ -56,7 +56,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not verify_password(payload.password, user.password_hash):
         raise AppError(401, "Invalid email or password", "invalid_credentials")
 
-    token = create_access_token(user.id, user.tier, user.is_admin)
+    token = create_access_token(user.id, user.tier, user.role)
     return AuthResponse(access_token=token, user=UserOut.model_validate(user, from_attributes=True))
 
 

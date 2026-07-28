@@ -24,11 +24,21 @@ def test_is_over_quota_true_above_limit():
 
 
 def test_history_limit_free_is_one():
-    assert entitlements.history_limit("free") == 1
+    assert entitlements.history_limit("free", "user") == 1
 
 
 def test_history_limit_premium_is_unlimited():
-    assert entitlements.history_limit("premium") is None
+    assert entitlements.history_limit("premium", "user") is None
+
+
+def test_history_limit_admin_is_unlimited_even_on_free_tier():
+    # role bypass wins regardless of the account's own tier.
+    assert entitlements.history_limit("free", "admin") is None
+
+
+def test_history_limit_support_follows_tier_like_a_normal_user():
+    # 'support' has no special behavior yet — scoped for future use.
+    assert entitlements.history_limit("free", "support") == 1
 
 
 def test_locked_features_free_is_nonempty():
