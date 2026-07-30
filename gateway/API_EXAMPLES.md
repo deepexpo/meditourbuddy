@@ -246,9 +246,14 @@ account's `tier` decides what happens server-side, not the request.
 
 - **Free**: a deterministic keyword match on `description` → registry
   lookups. Zero Anthropic tokens, typically completes in 1–3s.
-- **Premium**: a real multi-round Claude tool-use loop against the live
-  clinic registry. Takes several seconds — show a loading state, not a
-  spinner-blocks-everything UI.
+- **Premium**: a two-phase agent run against the live clinic registry —
+  Claude retrieves and verifies candidate clinics via tool calls, then a
+  separate, tightly-scoped call writes the report from *only* that
+  verified data (not from its memory of the retrieval conversation).
+  `budget_usd_max` is enforced the same way free tier enforces it: an
+  over-budget clinic is filtered out before the model can ever offer it,
+  not just requested politely in a prompt. Takes several seconds — show a
+  loading state, not a spinner-blocks-everything UI.
 - **Admin** (`role: "admin"`): always gets the premium engine and never
   hits the quota, regardless of their own account's `tier`. Send
   `"preview_tier": "free"` or `"preview_tier": "premium"` (admin-only —

@@ -67,9 +67,13 @@ Three workspace packages, plus the gateway:
   logout/password-reset via email), a `tier` (free/premium) and independent `role` (user/admin/
   support — support is scoped for future use) per account, and one unified `POST /cases` endpoint
   that branches server-side: free tier runs a deterministic, zero-Anthropic-token pipeline
-  (`app/services/basic_pipeline.py`); premium (and admin, unconditionally) runs a real multi-round
-  Claude tool-use loop against the MCP server (`app/services/orchestrator.py`). Full endpoint
-  reference: [`gateway/API_EXAMPLES.md`](gateway/API_EXAMPLES.md). Deployed on Fly.io.
+  (`app/services/basic_pipeline.py`); premium (and admin, unconditionally) runs a two-phase
+  retrieve-then-generate agent against the MCP server (`app/services/orchestrator.py`) — Claude
+  retrieves and verifies candidates via tool calls, then a separate, tightly-scoped call writes the
+  report from *only* that verified data, with a server-side pass that re-checks (and, if needed,
+  overwrites) the model's chosen options against what the tools actually returned before anything
+  reaches the client. Full endpoint reference: [`gateway/API_EXAMPLES.md`](gateway/API_EXAMPLES.md).
+  Deployed on Fly.io.
 - **`packages/shared`** — the Drizzle ORM schema (`clinics`, `accreditations`, `practitioners`,
   `procedures`, `clinic_procedures`, `reviews_summary`), a Postgres client, a static currency
   conversion table (`fx.ts`), and the seed pipeline (`src/seed/`) that loads
